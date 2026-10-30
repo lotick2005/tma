@@ -1,3 +1,16 @@
 [gd_scene format=3]
 
 [node name="Main" type="Node3D"]
+
+[node name="StageOverlay" type="CanvasLayer" parent="."]
+
+[node name="StageLabel" type="Label" parent="StageOverlay"]
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+grow_horizontal = 2
+grow_vertical = 2
+text = "ТЬМА ПО ВСЕЙ ЗЕМЛЕ — этап 0"
+horizontal_alignment = 1
+vertical_alignment = 1
+autowrap_mode = 3
