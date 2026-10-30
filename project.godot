@@ -91,6 +91,11 @@ lamp_toggle={
 "events": [Object(InputEventKey,"resource_local_to_scene":false,"resource_name":"","device":-1,"window_id":0,"alt_pressed":false,"shift_pressed":false,"ctrl_pressed":false,"meta_pressed":false,"pressed":false,"keycode":0,"physical_keycode":70,"key_label":0,"unicode":0,"location":0,"echo":false,"script":null)
 ]
 }
+debug_0={
+"deadzone": 0.2,
+"events": [Object(InputEventKey,"resource_local_to_scene":false,"resource_name":"","device":-1,"window_id":0,"alt_pressed":false,"shift_pressed":false,"ctrl_pressed":false,"meta_pressed":false,"pressed":false,"keycode":0,"physical_keycode":48,"key_label":0,"unicode":0,"location":0,"echo":false,"script":null)
+]
+}
 pause={
 "deadzone": 0.2,
 "events": [Object(InputEventKey,"resource_local_to_scene":false,"resource_name":"","device":-1,"window_id":0,"alt_pressed":false,"shift_pressed":false,"ctrl_pressed":false,"meta_pressed":false,"pressed":false,"keycode":0,"physical_keycode":4194305,"key_label":0,"unicode":0,"location":0,"echo":false,"script":null)
@@ -146,15 +151,15 @@ psx_affine_near={
 }
 psx_fog_color={
 "type": "color",
-"value": Color(0.1, 0.11, 0.14, 1)
+"value": Color(0.05, 0.07, 0.11, 1)
 }
 psx_fog_start={
 "type": "float",
-"value": 4.0
+"value": 1.75
 }
 psx_fog_end={
 "type": "float",
-"value": 28.0
+"value": 13.5
 }
 psx_light_max={
 "type": "float",

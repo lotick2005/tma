@@ -4,13 +4,14 @@
 [ext_resource type="PackedScene" path="res://scenes/actors/player.tscn" id="2_player"]
 [ext_resource type="PackedScene" path="res://scenes/ui/psx_post.tscn" id="3_post"]
 [ext_resource type="PackedScene" path="res://scenes/ui/click_to_start.tscn" id="4_cts"]
+[ext_resource type="PackedScene" path="res://scenes/ui/debug_panel.tscn" id="5_debug"]
 
 [sub_resource type="Environment" id="Environment_dark"]
 background_mode = 1
-background_color = Color(0.1, 0.11, 0.14, 1)
+background_color = Color(0.05, 0.07, 0.11, 1)
 ambient_light_source = 2
 ambient_light_color = Color(0.35, 0.38, 0.5, 1)
-ambient_light_energy = 0.15
+ambient_light_energy = 0.03
 
 [node name="TestRoom" type="Node3D"]
 script = ExtResource("1_room")
@@ -24,3 +25,5 @@ transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0, 2.5)
 [node name="PsxPost" parent="." instance=ExtResource("3_post")]
 
 [node name="ClickToStart" parent="." instance=ExtResource("4_cts")]
+
+[node name="DebugPanel" parent="." instance=ExtResource("5_debug")]
