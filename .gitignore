@@ -1,0 +1,9 @@
+# Godot
+.godot/
+
+# Godot и шаблоны экспорта, скачанные tools/get_godot.sh
+.tools/
+
+# Сборки
+build/
+export/

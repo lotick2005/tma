@@ -1,0 +1,59 @@
+# Собирает браузерную версию игры и выкладывает её на GitHub Pages.
+# Запускается при каждом пуше в main и вручную (Actions → Web build → Run workflow).
+# Нужно один раз включить: Settings → Pages → Source: GitHub Actions
+# (и репо должно быть публичным на бесплатном тарифе GitHub).
+name: Web build
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+concurrency:
+  group: pages
+  cancel-in-progress: true
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+
+      - name: Cache Godot and export templates
+        uses: actions/cache@v6
+        with:
+          path: .tools
+          key: godot-${{ hashFiles('.godot-version', 'tools/get_godot.sh') }}
+
+      - name: Get Godot and web templates
+        run: ./tools/get_godot.sh --templates
+
+      - name: Import project
+        run: .tools/godot --headless --path . --import
+
+      - name: Export web build
+        run: |
+          mkdir -p build/web
+          .tools/godot --headless --path . --export-release "Web" build/web/index.html
+          test -f build/web/index.html
+          test -f build/web/index.pck
+          ls -la build/web
+
+      - uses: actions/upload-pages-artifact@v5
+        with:
+          path: build/web
+
+  deploy:
+    needs: build
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - id: deployment
+        uses: actions/deploy-pages@v5
