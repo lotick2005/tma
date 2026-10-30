@@ -1,0 +1,69 @@
+[gd_scene format=3]
+
+[ext_resource type="Script" path="res://scripts/click_to_start.gd" id="1_cts"]
+
+[node name="ClickToStart" type="CanvasLayer"]
+layer = 10
+script = ExtResource("1_cts")
+
+[node name="StartPanel" type="ColorRect" parent="."]
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+grow_horizontal = 2
+grow_vertical = 2
+color = Color(0, 0, 0, 0.85)
+
+[node name="Title" type="Label" parent="StartPanel"]
+anchors_preset = 10
+anchor_right = 1.0
+offset_top = 70.0
+offset_bottom = 93.0
+grow_horizontal = 2
+text = "ТЬМА ПО ВСЕЙ ЗЕМЛЕ"
+horizontal_alignment = 1
+
+[node name="Prompt" type="Label" parent="StartPanel"]
+anchors_preset = 10
+anchor_right = 1.0
+offset_top = 110.0
+offset_bottom = 133.0
+grow_horizontal = 2
+theme_override_colors/font_color = Color(1, 0.8, 0.5, 1)
+text = "Кликни, чтобы начать"
+horizontal_alignment = 1
+
+[node name="Controls" type="Label" parent="StartPanel"]
+anchors_preset = 12
+anchor_top = 1.0
+anchor_right = 1.0
+anchor_bottom = 1.0
+offset_top = -60.0
+offset_bottom = -12.0
+grow_horizontal = 2
+grow_vertical = 0
+theme_override_colors/font_color = Color(0.6, 0.6, 0.6, 1)
+theme_override_font_sizes/font_size = 10
+text = "WASD — идти · Shift — бежать · C — присесть
+мышь — смотреть · Esc — отпустить курсор"
+horizontal_alignment = 1
+
+[node name="ResumePanel" type="ColorRect" parent="."]
+visible = false
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+grow_horizontal = 2
+grow_vertical = 2
+color = Color(0, 0, 0, 0.5)
+
+[node name="Prompt" type="Label" parent="ResumePanel"]
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+grow_horizontal = 2
+grow_vertical = 2
+theme_override_colors/font_color = Color(1, 0.8, 0.5, 1)
+text = "Кликни, чтобы продолжить"
+horizontal_alignment = 1
+vertical_alignment = 1
