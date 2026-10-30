@@ -8,6 +8,9 @@ extends CanvasLayer
 ## Игрок кликнул первый раз: мышь захвачена, браузер разрешил звук.
 signal started
 
+## Пока true, экран «Кликни, чтобы продолжить» не показывается (открыта отладочная панель).
+var blocked := false
+
 var _started := false
 
 @onready var _start_panel: Control = $StartPanel
@@ -16,6 +19,7 @@ var _started := false
 
 func _ready() -> void:
 	process_mode = Node.PROCESS_MODE_ALWAYS
+	add_to_group("click_to_start")
 	_start_panel.show()
 	_resume_panel.hide()
 	_start_panel.gui_input.connect(_on_panel_input)
@@ -31,7 +35,11 @@ func _unhandled_input(event: InputEvent) -> void:
 func _process(_delta: float) -> void:
 	# Курсор мог отпустить и сам браузер (Esc, переключение вкладки)
 	if _started:
-		_resume_panel.visible = Input.mouse_mode != Input.MOUSE_MODE_CAPTURED
+		_resume_panel.visible = not blocked and Input.mouse_mode != Input.MOUSE_MODE_CAPTURED
+
+
+func is_started() -> bool:
+	return _started
 
 
 func _on_panel_input(event: InputEvent) -> void:

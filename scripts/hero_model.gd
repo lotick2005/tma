@@ -70,7 +70,7 @@ static func _rest_pos(bone: String) -> Vector3:
 	return Vector3.ZERO
 
 
-## Тело без головы: одна фигура, поверхности — туника, кожа, пояс, калиги.
+## Тело без головы и рук: туника, кожа ног, пояс, калиги. Руки — build_arms() на том же скелете.
 static func build_body(skel: Skeleton3D) -> ArrayMesh:
 	var m := HeroModel.new()
 	m._skel = skel
@@ -94,14 +94,26 @@ static func build_body(skel: Skeleton3D) -> ArrayMesh:
 	m._commit(mesh, leather)
 	m._begin()
 	for side in [-1.0, 1.0]:
-		m._arm(side)
-		m._hand(side)
 		m._leg_skin(side)
 	m._commit(mesh, skin)
 	m._begin()
 	for side in [-1.0, 1.0]:
 		m._caliga(side)
 	m._commit(mesh, caliga)
+	return mesh
+
+
+## Руки от рукава до кончиков пальцев (голая кожа). Отдельным мешем на том же скелете,
+## чтобы свой светильник освещал их одинаково — подсветкой, а не прямым светом (см. hero_body.gd).
+static func build_arms(skel: Skeleton3D) -> ArrayMesh:
+	var m := HeroModel.new()
+	m._skel = skel
+	var mesh := ArrayMesh.new()
+	m._begin()
+	for side in [-1.0, 1.0]:
+		m._arm(side)
+		m._hand(side)
+	m._commit(mesh, PsxMaterial.make(ProcTextures.mottled(64, SKIN_COLOR, 0.03, 0.06, 11)))
 	return mesh
 
 
@@ -170,42 +182,41 @@ func _belt() -> void:
 	], 8, 0.15, false, false)
 
 
+## Рука одной трубкой: плечо → локоть → запястье → ладонь → «варежка» из четырёх пальцев.
+## Запястье цельное: кольцо на стыке висит на предплечье и кисти пополам.
+## Сечение кисти — шестигранник: плоские грани — ладонь и тыльная сторона, рёбра — края кисти.
 func _arm(side: float) -> void:
 	var x := SHOULDER_X * side
 	var s := "L" if side < 0.0 else "R"
 	var elbow_y := 1.44 - UPPER_ARM
-	var wrist_y := elbow_y - FOREARM
+	var wy := elbow_y - FOREARM
+	var upper := "upper_arm." + s
+	var fore := "forearm." + s
+	var hand := "hand." + s
+	var fingers := "fingers." + s
 	_tube([
-		_ring(Vector3(x, 1.34, 0.0), 0.05, 0.05, [["upper_arm." + s, 1.0]]),
-		_ring(Vector3(x, elbow_y + 0.03, 0.0), 0.042, 0.044, [["upper_arm." + s, 1.0]]),
-		_ring(Vector3(x, elbow_y, 0.005), 0.04, 0.045, [["upper_arm." + s, 0.5], ["forearm." + s, 0.5]]),
-		_ring(Vector3(x, elbow_y - 0.07, 0.0), 0.043, 0.04, [["forearm." + s, 1.0]]),
-		_ring(Vector3(x, wrist_y + 0.01, 0.0), 0.028, 0.032, [["forearm." + s, 1.0]]),
-	], 6, 0.15, false, false)
+		_ring(Vector3(x, 1.34, 0.0), 0.05, 0.05, [[upper, 1.0]]),
+		_ring(Vector3(x, elbow_y + 0.03, 0.0), 0.042, 0.044, [[upper, 1.0]]),
+		_ring(Vector3(x, elbow_y, 0.005), 0.04, 0.045, [[upper, 0.5], [fore, 0.5]]),
+		_ring(Vector3(x, elbow_y - 0.07, 0.0), 0.043, 0.04, [[fore, 1.0]]),
+		_ring(Vector3(x, wy + 0.03, 0.0), 0.027, 0.032, [[fore, 1.0]]),
+		_ring(Vector3(x, wy, 0.0), 0.022, 0.03, [[fore, 0.5], [hand, 0.5]]),
+		_ring(Vector3(x, wy - 0.035, 0.0), 0.025, 0.042, [[hand, 1.0]]),
+		_ring(Vector3(x, wy - 0.085, 0.0), 0.019, 0.043, [[hand, 0.5], [fingers, 0.5]]),
+		_ring(Vector3(x, wy - 0.13, 0.0), 0.015, 0.04, [[fingers, 1.0]]),
+		_ring(Vector3(x, wy - 0.16, 0.0), 0.009, 0.033, [[fingers, 1.0]]),
+	], 6, 0.15, false, true)
 
 
-## Кисть: ладонь, два «пучка» пальцев и большой палец. Ладонь плоская по X (к бедру), широкая по Z.
+## Большой палец: растёт из ладони спереди (−Z), чуть к телу.
 func _hand(side: float) -> void:
 	var x := SHOULDER_X * side
-	var s := "L" if side < 0.0 else "R"
+	var hand := [["hand." + ("L" if side < 0.0 else "R"), 1.0]]
 	var wy := 1.44 - UPPER_ARM - FOREARM
-	var hand := [["hand." + s, 1.0]]
-	var fingers := [["fingers." + s, 1.0]]
 	_tube([
-		_ring(Vector3(x, wy + 0.01, 0.0), 0.022, 0.03, hand),
-		_ring(Vector3(x, wy - 0.05, 0.0), 0.017, 0.042, hand),
-		_ring(Vector3(x, wy - 0.09, 0.0), 0.014, 0.04, fingers),
-	], 4, 0.1, false, false)
-	for z in [-0.019, 0.019]:
-		_tube([
-			_ring(Vector3(x, wy - 0.088, z), 0.013, 0.018, fingers),
-			_ring(Vector3(x, wy - 0.15, z * 0.9), 0.01, 0.014, fingers),
-			_ring(Vector3(x, wy - 0.17, z * 0.8), 0.006, 0.009, fingers),
-		], 4, 0.1, false, true)
-	# Большой палец — спереди (−Z), чуть к телу
-	_tube([
-		_ring(Vector3(x - 0.008 * side, wy - 0.02, -0.03), 0.013, 0.013, hand),
-		_ring(Vector3(x - 0.012 * side, wy - 0.075, -0.05), 0.009, 0.009, hand),
+		_ring(Vector3(x - 0.004 * side, wy - 0.015, -0.026), 0.014, 0.014, hand),
+		_ring(Vector3(x - 0.012 * side, wy - 0.055, -0.048), 0.012, 0.012, hand),
+		_ring(Vector3(x - 0.014 * side, wy - 0.085, -0.054), 0.009, 0.009, hand),
 	], 4, 0.1, false, true)
 
 

@@ -18,8 +18,12 @@ global uniform float psx_light_max;
 
 uniform sampler2D albedo_texture : source_color, filter_nearest, repeat_enable, hint_default_white;
 uniform vec4 albedo_color : source_color = vec4(1.0);
-// Собственная подсветка 0..1 (руки и светильник в кадре подсвечивает огонь). Сверху ярче, снизу темнее.
+// Собственная подсветка 0..1 (руки и светильник в кадре подсвечивает огонь).
 uniform float self_illum : hint_range(0.0, 1.0) = 0.0;
+// 1 — подсветка сверху ярче, снизу темнее (светильник); 0 — ровная по всей поверхности (тело, руки).
+uniform float self_illum_shade : hint_range(0.0, 1.0) = 1.0;
+// Цвет подсветки: для рук — цвет огня.
+uniform vec3 self_illum_color : source_color = vec3(1.0);
 
 // xy — UV, умноженные на w; z — сам w. Деление во fragment() убирает перспективную коррекцию.
 varying vec3 affine_uv;
@@ -49,8 +53,8 @@ void fragment() {
 	// Итог = свет × albedo + emission, поэтому так получается mix(освещённый цвет, туман, fog_k)
 	vec3 albedo = tex.rgb * albedo_color.rgb;
 	ALBEDO = albedo * (1.0 - fog_k);
-	float shade = 0.3 + 0.7 * clamp(NORMAL.y * 0.5 + 0.5, 0.0, 1.0);
-	EMISSION = mix(albedo * self_illum * shade, psx_fog_color.rgb, fog_k);
+	float shade = mix(1.0, 0.3 + 0.7 * clamp(NORMAL.y * 0.5 + 0.5, 0.0, 1.0), self_illum_shade);
+	EMISSION = mix(albedo * self_illum * shade * self_illum_color, psx_fog_color.rgb, fog_k);
 }
 
 // Ламберт, но вклад одного источника ограничен psx_light_max. Ограничиваем всю тройку RGB

@@ -12,9 +12,9 @@ const BODY_PROFILE := [
 ]
 
 @export var light_color := Color(1.0, 0.62, 0.3)
-@export var light_energy := 1.6
-## Радиус света, м.
-@export var light_range := 6.0
+@export var light_energy := 0.6
+## Радиус света, м: маленькое тёплое пятно. Мягкость затухания — omni_attenuation у узла Light.
+@export var light_range := 3.5
 ## Тени от светильника выключены, как на PS1: свет идёт почти из глаз героя, тени от него
 ## видны только рваными полосами по полу, а в браузере каждая кубическая тень — 6 лишних проходов.
 @export var shadows := false
@@ -61,6 +61,7 @@ func _process(delta: float) -> void:
 	var k := 1.0 - flicker_amount * n
 	_light.visible = intensity > 0.01
 	_light.light_energy = light_energy * k * intensity
+	_light.omni_range = light_range
 	glow = glow_strength * k * intensity
 	_clay.set_shader_parameter("self_illum", glow)
 	_light.position = _light_origin + Vector3(

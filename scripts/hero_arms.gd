@@ -23,8 +23,8 @@ signal lamp_changed(out: bool)
 const LAMP_HELD := Transform3D(Basis(Vector3(0.5, 0.3244, -0.803), Vector3(0.0, 0.9272, 0.3746), Vector3(0.866, -0.1873, 0.4636)), Vector3(0.14, -0.13, -0.36))
 const LAMP_PULLED := Transform3D(Basis(Vector3(0.5, 0.3244, -0.803), Vector3(0.0, 0.9272, 0.3746), Vector3(0.866, -0.1873, 0.4636)), Vector3(0.21, -0.07, -0.19))
 ## Сгиб пальцев, градусов: пустая рука и рука со светильником.
-const FINGERS_RELAXED := 15.0
-const FINGERS_HOLD := 35.0
+const FINGERS_RELAXED := 25.0
+const FINGERS_HOLD := 60.0
 
 ## В руке ли светильник. Сохранять — через GameState.lamp_out (это делает Player).
 var lamp_out := true

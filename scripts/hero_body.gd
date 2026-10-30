@@ -15,8 +15,10 @@ extends Node3D
 ## Глаза — на передней части головы, а глядя вниз, тело чуть отъезжает, чтобы были видны ноги.
 @export var body_back := 0.07
 @export var body_back_looking_down := 0.25
-## Насколько огонь светильника подсвечивает тело (0..1): иначе рука под огнём — чёрная палка.
-@export_range(0.0, 1.0) var lamp_glow := 0.5
+## Насколько огонь светильника подсвечивает руки (0..1). Свой светильник светит на руки
+## не напрямую (вплотную кисть пересвечена, а предплечье в тени — кисть «отрывается»),
+## а этой ровной тёплой подсветкой, одинаковой на кисти, предплечье и локте.
+@export_range(0.0, 1.0) var lamp_glow := 0.9
 
 var skeleton: Skeleton3D
 ## Фаза шага (π на шаг) и сглаженная «сила» шага 0..1.8 — их читает hero_arms.gd для покачивания рук.
@@ -27,7 +29,7 @@ var _eye_height := 1.62
 var _pitch := 0.0
 var _speed_ratio := 0.0
 var _idx := {}
-var _materials: Array[ShaderMaterial] = []
+var _arms_mat: ShaderMaterial
 
 @onready var _lamp: Node3D = $OilLamp
 
@@ -50,8 +52,18 @@ func _ready() -> void:
 	# Меш анимируется костями — запас, чтобы его не отсекало по исходной рамке
 	body.extra_cull_margin = 1.0
 	skeleton.add_child(body)
-	for i in body.mesh.get_surface_count():
-		_materials.append(body.mesh.surface_get_material(i))
+
+	# Руки — на слое рук и светильника в кадре: свой огонь их напрямую не освещает
+	var arms := MeshInstance3D.new()
+	arms.mesh = HeroModel.build_arms(skeleton)
+	arms.skin = skin
+	arms.skeleton = NodePath("..")
+	arms.layers = 1 << (Player.VIEW_LAYER - 1)
+	arms.extra_cull_margin = 1.0
+	skeleton.add_child(arms)
+	_arms_mat = arms.mesh.surface_get_material(0)
+	_arms_mat.set_shader_parameter("self_illum_shade", 0.0)
+	_arms_mat.set_shader_parameter("self_illum_color", _lamp.light_color)
 
 	var head := MeshInstance3D.new()
 	head.mesh = HeroModel.build_head(skeleton)
@@ -79,9 +91,7 @@ func update_pose(eye_height: float, pitch: float, phase: float, speed_ratio: flo
 func _process(delta: float) -> void:
 	# Глядя в пол, тело отъезжает назад: верх плеч уходит из кадра, видны грудь, ноги и ступни
 	position.z = lerpf(body_back, body_back_looking_down, smoothstep(deg_to_rad(25.0), deg_to_rad(80.0), -_pitch))
-	var glow: float = _lamp.glow * lamp_glow
-	for m in _materials:
-		m.set_shader_parameter("self_illum", glow)
+	_arms_mat.set_shader_parameter("self_illum", _lamp.glow * lamp_glow)
 	var pelvis_h := _eye_height - eye_to_pelvis
 	skeleton.set_bone_pose_position(_idx["pelvis"], Vector3(0.0, pelvis_h, 0.0))
 	# Присед: бедро вперёд на угол, голень назад на тот же угол — таз опускается
