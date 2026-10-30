@@ -1,16 +1,19 @@
 class_name PropLibrary
 extends RefCounted
-## Библиотека предметов: лоуполи-меши строятся кодом, все на одном материале — атласе 256×256
-## из 16 процедурных текстур 64×64 (глина, дерево, лён, солома, камень…). Поэтому весь «быт»
+## Библиотека предметов: лоуполи-меши строятся кодом, все на одном материале — атласе 256×384
+## из 24 процедурных текстур 64×64 (глина, дерево, лён, солома, камень…). Поэтому весь «быт»
 ## куска уровня рисуется за один вызов. Меш каждого предмета строится один раз и кешируется.
 ## Предмет в редакторе — сцена res://scenes/props/prop.tscn (поле kind), все сразу — catalog.tscn.
 ## Новый предмет: функция _make_<имя>() ниже + строка в KINDS.
 
-## Плитки атласа (4×4 по 64 пикселя).
-enum Tile { CLAY, CLAY_DARK, WOOD, WOOD_DARK, LINEN, CLOTH_RED, CLOTH_BLUE, STRAW, SACK, STONE, BASALT, LEAF, BARK, METAL, FOOD, PALM }
+## Плитки атласа (4 в ряд, ATLAS_ROWS рядов по 64 пикселя).
+enum Tile { CLAY, CLAY_DARK, WOOD, WOOD_DARK, LINEN, CLOTH_RED, CLOTH_BLUE, STRAW, SACK, STONE, BASALT, LEAF, BARK, METAL, FOOD, PALM,
+	BLOOD, BLOOD_DARK, SHROUD, DUST, CLOTH_OCHRE, SOOT, IRON, COIN }
+const ATLAS_ROWS := 6
 
 ## Свойства предметов: collide — размер коробки коллизии (ноль — без неё, можно пройти/перешагнуть);
-## mm — часто повторяется, рисуется через MultiMeshInstance3D; wall — вешается на стену (точка — у стены).
+## mm — часто повторяется, рисуется через MultiMeshInstance3D; wall — вешается на стену (точка — у стены);
+## glow — огоньки (Glows): [точка в координатах предмета, радиус м, яркость, true — виден издалека].
 const KINDS := {
 	# Быт
 	"jar_small": {"collide": Vector3.ZERO, "mm": true},
@@ -22,6 +25,7 @@ const KINDS := {
 	"mat_rolled": {"collide": Vector3.ZERO},
 	"mat": {"collide": Vector3.ZERO},
 	"lamp_niche": {"collide": Vector3.ZERO, "wall": true},
+	"lamp_niche_lit": {"collide": Vector3.ZERO, "wall": true, "glow": [[Vector3(0.0, 1.385, -0.15), 0.07, 1.0]]},
 	"rope_coil": {"collide": Vector3.ZERO},
 	"laundry": {"collide": Vector3.ZERO},
 	"herbs": {"collide": Vector3.ZERO, "wall": true},
@@ -54,6 +58,14 @@ const KINDS := {
 	"shield": {"collide": Vector3.ZERO},
 	"helmet": {"collide": Vector3.ZERO},
 	"spear": {"collide": Vector3.ZERO},
+	"spear_fallen": {"collide": Vector3.ZERO},
+	"caliga": {"collide": Vector3.ZERO, "mm": true},
+	"brazier": {"collide": Vector3(0.6, 1.0, 0.6),
+		"glow": [[Vector3(0.0, 1.05, 0.0), 0.3, 1.2, true], [Vector3(0.0, 1.3, 0.0), 0.9, 0.45, true]]},
+	# Двери: кровавые отпечатки ладоней и царапины (на створке), мебель, которой заваливают дверь изнутри
+	"blood_hands": {"collide": Vector3.ZERO, "wall": true},
+	"table_tipped": {"collide": Vector3.ZERO},
+	"chest": {"collide": Vector3(0.9, 0.55, 0.5)},
 	# Интерьер
 	"table_low": {"collide": Vector3(1.0, 0.4, 0.6)},
 	"stool": {"collide": Vector3.ZERO},
@@ -88,7 +100,6 @@ static func info(kind: String) -> Dictionary:
 # ─── Атлас ───────────────────────────────────────────────────────────────────
 
 static func _atlas() -> ImageTexture:
-	var img := Image.create_empty(256, 256, false, Image.FORMAT_RGB8)
 	var tiles := [
 		ProcTextures.mottled(64, Color(0.62, 0.36, 0.22), 0.05, 0.1, 61),          # CLAY
 		ProcTextures.mottled(64, Color(0.45, 0.25, 0.16), 0.05, 0.1, 62),          # CLAY_DARK
@@ -106,7 +117,16 @@ static func _atlas() -> ImageTexture:
 		ProcTextures.mottled(64, Color(0.6, 0.45, 0.22), 0.06, 0.12, 74),          # METAL (бронза)
 		ProcTextures.mottled(64, Color(0.72, 0.48, 0.24), 0.08, 0.1, 75),          # FOOD
 		ProcTextures.stripes(64, 16, Color(0.55, 0.6, 0.28), Color(0.4, 0.45, 0.2), 76),  # PALM
+		ProcTextures.mottled(64, Color(0.26, 0.035, 0.04), 0.05, 0.14, 77),        # BLOOD — тёмно-бордовая
+		ProcTextures.mottled(64, Color(0.15, 0.025, 0.03), 0.05, 0.12, 78),        # BLOOD_DARK — запёкшаяся
+		ProcTextures.stripes(64, 6, Color(0.86, 0.84, 0.78), Color(0.72, 0.7, 0.64), 79),  # SHROUD — погребальные пелены
+		ProcTextures.mottled(64, Color(0.86, 0.85, 0.82), 0.05, 0.12, 80),         # DUST — погребальная пыль
+		ProcTextures.hemmed_cloth(64, Color(0.68, 0.48, 0.2), 6, 81),              # CLOTH_OCHRE
+		ProcTextures.mottled(64, Color(0.045, 0.04, 0.035), 0.03, 0.05, 82),       # SOOT — тёмное углубление, копоть
+		ProcTextures.mottled(64, Color(0.24, 0.22, 0.21), 0.06, 0.1, 83),          # IRON
+		ProcTextures.mottled(64, Color(0.74, 0.72, 0.64), 0.08, 0.1, 84),          # COIN — серебро
 	]
+	var img := Image.create_empty(256, 64 * ATLAS_ROWS, false, Image.FORMAT_RGB8)
 	for i in tiles.size():
 		var t: Image = (tiles[i] as ImageTexture).get_image()
 		t.convert(Image.FORMAT_RGB8)
@@ -128,7 +148,7 @@ class PB:
 		var inset := 1.0 / 64.0
 		var u := clampf(uv.x, 0.0, 1.0) * (1.0 - inset * 2.0) + inset
 		var v := clampf(uv.y, 0.0, 1.0) * (1.0 - inset * 2.0) + inset
-		return Vector2((tile % 4 + u) / 4.0, (tile / 4 + v) / 4.0)
+		return Vector2((tile % 4 + u) / 4.0, (tile / 4 + v) / float(ATLAS_ROWS))
 
 	## Четырёхугольник tl, tr, br, bl — по часовой, если смотреть на лицевую сторону.
 	func quad(tl: Vector3, tr: Vector3, br: Vector3, bl: Vector3, tile: int, both := false) -> void:
@@ -254,19 +274,27 @@ static func _make_mat() -> Mesh:
 	return b.commit()
 
 
-## Ниша для светильника: каменный подоконник и арочная рамка из тёсаного камня, на полке — светильник.
+## Ниша для светильника: тёмное углубление в стене (копоть), каменная рамка и полка, на полке — светильник.
+## Точка — у стены на высоте 0, ниша смотрит в −Z. Горящий вариант — lamp_niche_lit (огонёк из KINDS).
 static func _make_lamp_niche() -> Mesh:
 	var b := PB.new()
-	# Точка — у стены на высоте 0; ниша смотрит в −Z
-	b.box(Vector3(0, 1.3, -0.06), Vector3(0.5, 0.06, 0.14), Tile.STONE)
-	b.box(Vector3(-0.22, 1.5, -0.03), Vector3(0.06, 0.4, 0.06), Tile.STONE)
-	b.box(Vector3(0.22, 1.5, -0.03), Vector3(0.06, 0.4, 0.06), Tile.STONE)
-	b.box(Vector3(0, 1.72, -0.03), Vector3(0.5, 0.06, 0.06), Tile.STONE)
-	b.box(Vector3(0, 1.5, -0.005), Vector3(0.38, 0.38, 0.01), Tile.SACK)
-	b.lathe([Vector2(0, 0), Vector2(0.04, 0), Vector2(0.05, 0.02), Vector2(0.02, 0.035), Vector2(0, 0.03)], 6,
-		Tile.CLAY, Vector3(0, 1.33, -0.07))
-	b.box(Vector3(0, 1.35, -0.13), Vector3(0.03, 0.015, 0.06), Tile.CLAY)
+	# Тёмное «углубление» и копоть над ним
+	b.box(Vector3(0, 1.52, -0.012), Vector3(0.36, 0.38, 0.02), Tile.SOOT)
+	b.box(Vector3(0, 1.88, -0.008), Vector3(0.24, 0.2, 0.012), Tile.SOOT)
+	# Рамка из светлого тёсаного камня и выступающая полка
+	b.box(Vector3(0, 1.31, -0.08), Vector3(0.54, 0.07, 0.17), Tile.STONE)
+	b.box(Vector3(-0.23, 1.53, -0.035), Vector3(0.08, 0.42, 0.07), Tile.STONE)
+	b.box(Vector3(0.23, 1.53, -0.035), Vector3(0.08, 0.42, 0.07), Tile.STONE)
+	b.box(Vector3(0, 1.75, -0.035), Vector3(0.54, 0.08, 0.07), Tile.STONE)
+	# Светильник: круглое тело и носик (к огоньку)
+	b.lathe([Vector2(0, 0), Vector2(0.045, 0), Vector2(0.055, 0.02), Vector2(0.025, 0.04), Vector2(0, 0.035)], 6,
+		Tile.CLAY, Vector3(0, 1.345, -0.09))
+	b.box(Vector3(0, 1.365, -0.13), Vector3(0.035, 0.018, 0.06), Tile.CLAY)
 	return b.commit()
+
+
+static func _make_lamp_niche_lit() -> Mesh:
+	return _make_lamp_niche()
 
 
 static func _make_rope_coil() -> Mesh:
@@ -406,7 +434,9 @@ static func _make_lamb_pen() -> Mesh:
 static func _make_crack() -> Mesh:
 	var b := PB.new()
 	var rng := _rng(13)
-	var p := Vector3(0, 0.2, -0.015)
+	# Лицом в +Z и разворот на 180°: лицевая сторона смотрит в −Z, от стены
+	b.xf = Transform3D(Basis(Vector3.UP, PI), Vector3.ZERO)
+	var p := Vector3(0, 0.2, 0.015)
 	for i in 7:
 		var q := p + Vector3(rng.randf_range(-0.25, 0.25), rng.randf_range(0.25, 0.45), 0)
 		var w := 0.05 - i * 0.005
@@ -556,6 +586,99 @@ static func _make_spear() -> Mesh:
 	var lean := Basis(Vector3.RIGHT, -0.2)
 	b.box(Vector3(0, 1.0, -0.2), Vector3(0.04, 2.0, 0.04), Tile.WOOD, lean)
 	b.box(lean * Vector3(0, 2.1, 0) + Vector3(0, 0, -0.2), Vector3(0.05, 0.25, 0.015), Tile.METAL, lean)
+	return b.commit()
+
+
+## Копьё, упавшее на мостовую.
+static func _make_spear_fallen() -> Mesh:
+	var b := PB.new()
+	b.box(Vector3(0, 0.025, 0), Vector3(0.04, 0.04, 2.0), Tile.WOOD)
+	b.box(Vector3(0, 0.02, -1.12), Vector3(0.06, 0.015, 0.25), Tile.METAL)
+	b.box(Vector3(0, 0.025, 1.02), Vector3(0.045, 0.045, 0.06), Tile.METAL)
+	return b.commit()
+
+
+## Калига: солдатская сандалия на толстой подошве с ремешками, слетела с ноги на бегу.
+static func _make_caliga() -> Mesh:
+	var b := PB.new()
+	var tilt := Basis(Vector3.BACK, 0.25)
+	b.box(Vector3(0, 0.025, 0), Vector3(0.11, 0.035, 0.28), Tile.WOOD_DARK, tilt)
+	for z in [-0.08, -0.01, 0.06]:
+		b.box(Vector3(0, 0.06, z), Vector3(0.12, 0.05, 0.025), Tile.SACK, tilt)
+	b.box(Vector3(0, 0.1, 0.11), Vector3(0.1, 0.09, 0.04), Tile.SACK, tilt)
+	return b.commit()
+
+
+## Жаровня на треноге: железная чаша с углями. Огонь — огоньки из KINDS.
+static func _make_brazier() -> Mesh:
+	var b := PB.new()
+	for i in 3:
+		var a := TAU * i / 3.0
+		b.box(Vector3(cos(a) * 0.2, 0.42, sin(a) * 0.2), Vector3(0.04, 0.9, 0.04), Tile.IRON,
+			Basis(Vector3(-sin(a), 0, cos(a)), -0.18))
+	b.lathe([Vector2(0.08, 0.82), Vector2(0.3, 0.9), Vector2(0.34, 1.02), Vector2(0.3, 1.0), Vector2(0, 0.95)], 8, Tile.IRON)
+	b.lathe([Vector2(0.28, 0.99), Vector2(0.15, 1.06), Vector2(0, 1.07)], 7, Tile.CLAY_DARK)
+	return b.commit()
+
+
+# ─── Двери: кровь, завалы ────────────────────────────────────────────────────
+
+## Кровавые отпечатки ладоней, царапины и потёки на створке. Точка — на поверхности, смотрит в −Z.
+static func _make_blood_hands() -> Mesh:
+	var b := PB.new()
+	var rng := _rng(31)
+	# Рисуем лицом в +Z и разворачиваем на 180°: лицевая сторона смотрит в −Z, от стены
+	b.xf = Transform3D(Basis(Vector3.UP, PI), Vector3.ZERO)
+	var z := 0.004
+	var hands := [Vector3(-0.18, 1.32, 0.15), Vector3(0.1, 1.48, -0.1), Vector3(0.22, 1.1, 0.3), Vector3(-0.05, 0.95, -0.25)]
+	for hnd: Vector3 in hands:
+		_hand(b, Vector2(hnd.x, hnd.y), hnd.z, z, Tile.BLOOD)
+	# Царапины: пучки тонких полос сверху вниз
+	for i in 5:
+		var x := -0.3 + i * 0.05 + rng.randf_range(-0.01, 0.01)
+		var top := rng.randf_range(1.5, 1.75)
+		var bot := top - rng.randf_range(0.5, 0.8)
+		b.quad(Vector3(x - 0.006, top, z), Vector3(x + 0.006, top, z), Vector3(x + 0.02 + 0.006, bot, z), Vector3(x + 0.02 - 0.006, bot, z),
+			Tile.BLOOD_DARK)
+	# Потёки вниз от ладоней
+	for hnd: Vector3 in hands:
+		var len := rng.randf_range(0.15, 0.45)
+		b.quad(Vector3(hnd.x - 0.012, hnd.y - 0.05, z), Vector3(hnd.x + 0.012, hnd.y - 0.05, z),
+			Vector3(hnd.x + 0.006, hnd.y - 0.05 - len, z), Vector3(hnd.x - 0.006, hnd.y - 0.05 - len, z), Tile.BLOOD)
+	return b.commit()
+
+
+## Отпечаток ладони: ладонь, четыре пальца, большой палец; angle — наклон, z — смещение от поверхности.
+static func _hand(b: PB, at: Vector2, angle: float, z: float, tile: int) -> void:
+	var rot := func(p: Vector2) -> Vector3:
+		var q := p.rotated(angle) + at
+		return Vector3(q.x, q.y, z)
+	var rect := func(c: Vector2, w: float, h: float) -> void:
+		b.quad(rot.call(c + Vector2(-w, h)), rot.call(c + Vector2(w, h)), rot.call(c + Vector2(w, -h)), rot.call(c + Vector2(-w, -h)), tile)
+	rect.call(Vector2.ZERO, 0.045, 0.05)
+	for i in 4:
+		rect.call(Vector2(-0.033 + i * 0.022, 0.09 - absf(i - 1.5) * 0.008), 0.008, 0.04)
+	rect.call(Vector2(0.06, 0.02), 0.009, 0.03)
+
+
+## Столик, опрокинутый на бок, — им подпёрли дверь изнутри.
+static func _make_table_tipped() -> Mesh:
+	var b := PB.new()
+	var tip := Basis(Vector3.RIGHT, PI * 0.5)
+	b.box(Vector3(0, 0.3, 0), Vector3(1.0, 0.05, 0.6), Tile.WOOD, tip)
+	for x in [-0.42, 0.42]:
+		for y in [0.06, 0.54]:
+			b.box(Vector3(x, y, 0.2), Vector3(0.05, 0.05, 0.36), Tile.WOOD_DARK)
+	return b.commit()
+
+
+## Деревянный сундук с обитыми углами.
+static func _make_chest() -> Mesh:
+	var b := PB.new()
+	b.box(Vector3(0, 0.25, 0), Vector3(0.9, 0.5, 0.5), Tile.WOOD_DARK)
+	b.box(Vector3(0, 0.52, 0), Vector3(0.92, 0.05, 0.52), Tile.WOOD)
+	for x in [-0.43, 0.43]:
+		b.box(Vector3(x, 0.27, 0), Vector3(0.05, 0.52, 0.53), Tile.IRON)
 	return b.commit()
 
 

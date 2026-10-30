@@ -4,7 +4,9 @@ extends RefCounted
 ##  • комнаты — по типу из ROOMS (жилая, кладовая, кухня, мастерская, подвал);
 ##  • дворы — цистерна, печь, жернова, дерево или лоза, бельё, кувшины;
 ##  • переулки — вещи у стен, ветви и черепки на земле, трещины, травы и ставни на стенах, бельё поперёк;
-##  • вручную — PROPS (рынок, пост стражи, тела) и PLAZA_PROPS (площадь).
+##  • вручную — PROPS (рынок, пост стражи, тела, римское снаряжение вдоль главной дороги),
+##    WALL_PROPS (на стенах: горящие ниши вдоль главной дороги) и PLAZA_PROPS (площадь).
+## У предметов с огнём (KINDS: glow) огоньки уходят в Glows.
 ## Ничего крупного не ставится на проход: в дверях, на лестницах, у их концов и в узких щелях — только плоское.
 ## Плотность — PROP_DENSITY в файле данных.
 
@@ -16,6 +18,7 @@ const WALL_DECOR := ["crack", "crack", "herbs", "lamp_niche"]
 
 var _q: QuarterBuilder
 var _b: LevelBuilder
+var _glows: Glows
 var _d: Dictionary
 var _rng := RandomNumberGenerator.new()
 var _mat: Material
@@ -27,15 +30,16 @@ var _used := {}
 var _solid_ok := true
 
 
-func _init(quarter: QuarterBuilder, builder: LevelBuilder, density: Dictionary) -> void:
+func _init(quarter: QuarterBuilder, builder: LevelBuilder, density: Dictionary, glows: Glows) -> void:
 	_q = quarter
 	_b = builder
+	_glows = glows
 	_d = density
 	_rng.seed = int(density.get("seed", 7))
 	_mat = PropLibrary.material()
 
 
-func build(rooms: Array, explicit: Array) -> void:
+func build(rooms: Array, explicit: Array, on_walls: Array = []) -> void:
 	_b.local = true
 	_mark_clear()
 	_furnish_rooms(rooms)
@@ -47,6 +51,13 @@ func build(rooms: Array, explicit: Array) -> void:
 		var p := _q.cell_center(c, r) + Vector3(e[4] if e.size() > 4 else 0.0, e[6] if e.size() > 6 else 0.0,
 			e[5] if e.size() > 5 else 0.0)
 		place(e[0], p, deg_to_rad(e[3]), _q.cell(c, r) in QuarterBuilder.INDOOR)
+	for e in on_walls:
+		var d: Vector2i = {"N": Vector2i(0, -1), "S": Vector2i(0, 1), "E": Vector2i(1, 0), "W": Vector2i(-1, 0)}[e[3]]
+		var c: int = e[1]
+		var r: int = e[2]
+		if not _is_wall(_q.cell(c + d.x, r + d.y)):
+			push_warning("WALL_PROPS: у клетки (%d, %d) со стороны %s нет стены" % [c, r, e[3]])
+		place(e[0], _at_wall(c, r, d, 0.0), _yaw_from_wall(d), _q.cell(c, r) in QuarterBuilder.INDOOR)
 	_b.local = false
 	_b.layer = 1
 
@@ -66,6 +77,9 @@ func place(kind: String, pos: Vector3, yaw: float, indoor: bool = false) -> void
 	var size: Vector3 = inf.get("collide", Vector3.ZERO)
 	if size != Vector3.ZERO:
 		_b.collision_box(Transform3D(xf.basis, pos + Vector3.UP * size.y * 0.5), size)
+	for g: Array in inf.get("glow", []):
+		var far: bool = g.size() > 3 and g[3]
+		_glows.add(xf * (g[0] as Vector3), g[1], Glows.Kind.FAR if far else Glows.Kind.NEAR, Glows.FIRE, g[2])
 	_b.layer = 1
 
 
@@ -165,7 +179,7 @@ func _reachable(cells: Array) -> bool:
 	for p: Vector2i in cells:
 		for d: Vector2i in DIRS:
 			var k := _q.cell(p.x + d.x, p.y + d.y)
-			if k in "dxo,.\\" or (k == "_" and _q.cell(p.x, p.y) == "m"):
+			if k in "dxo,.+\\" or (k == "_" and _q.cell(p.x, p.y) == "m"):
 				return true
 	return _q.cell(cells[0].x, cells[0].y) == "m"
 
@@ -175,7 +189,7 @@ func _door_count(cells: Array) -> int:
 	for p: Vector2i in cells:
 		for d: Vector2i in DIRS:
 			var k := _q.cell(p.x + d.x, p.y + d.y)
-			if k in "dxo" or k in ",.":
+			if k in "dxo" or k in ",.+":
 				n += 1
 	return n
 
@@ -314,7 +328,7 @@ func _furnish_alleys() -> void:
 	for r in _q.h:
 		for c in _q.w:
 			var k := _q.cell(c, r)
-			if k != "." and k != "*":
+			if k != "." and k != "*" and k != "+":
 				continue
 			var cell := Vector2i(c, r)
 			var clear := _keep_clear.has(cell)
@@ -325,6 +339,12 @@ func _furnish_alleys() -> void:
 					place("rubble_block", center + Vector3(_rng.randf_range(-0.5, 0.5), 0, _rng.randf_range(-0.5, 0.5)), _rng.randf() * TAU)
 				continue
 			var ws := _walls_around(c, r)
+			# Главная дорога — чище переулков: только трещины и ниши на стенах (вещи на ней — вручную)
+			if k == "+":
+				for d: Vector2i in ws:
+					if _rng.randf() < p_decor * 0.5:
+						place(_pick(["crack", "crack", "lamp_niche"]), _at_wall(c, r, d, 0.0, _rng.randf_range(-0.25, 0.25)), _yaw_from_wall(d))
+				continue
 			for d: Vector2i in ws:
 				var width := _width_across(c, r, d)
 				var yaw := _yaw_from_wall(d)

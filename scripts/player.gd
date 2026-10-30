@@ -42,6 +42,8 @@ signal move_mode_changed(mode: MoveMode)
 @export var crouch_toggle := true
 ## Радиус коллизии: покрывает тело вместе с коленями в приседе.
 @export var collision_radius := 0.35
+## Через препятствие не выше этого герой перешагивает сам (пороги, камни, ступени), м.
+@export var step_height := 0.35
 
 @export_group("Обзор")
 ## Радиан на пиксель экрана.
@@ -124,7 +126,9 @@ func _physics_process(delta: float) -> void:
 	var horizontal := Vector2(velocity.x, velocity.z).move_toward(Vector2(target.x, target.z), acceleration * delta)
 	velocity.x = horizontal.x
 	velocity.z = horizontal.y
+	var from := global_position
 	move_and_slide()
+	_try_step(from, Vector3(target.x, 0.0, target.z) * delta)
 
 	var moving := has_input and horizontal.length() > 0.1
 	var mode := MoveMode.STAND
@@ -171,6 +175,45 @@ func _set_body_height(height: float) -> void:
 	var capsule := _collision.shape as CapsuleShape3D
 	capsule.height = height
 	_collision.position.y = height * 0.5
+
+
+## Шаг через невысокое препятствие: если упёрлись в него, пробуем «поднять ногу» на step_height,
+## пройти вперёд и опуститься на то, что под ногами. Камера опускается обратно плавно.
+func _try_step(from: Vector3, motion: Vector3) -> void:
+	if not is_on_floor() or motion.length_squared() < 1e-8:
+		return
+	var moved := global_position - from
+	moved.y = 0.0
+	if moved.length() > motion.length() * 0.6:
+		return
+	var blocked := false
+	for i in get_slide_collision_count():
+		if absf(get_slide_collision(i).get_normal().y) < 0.7:
+			blocked = true
+	if not blocked:
+		return
+	var xf := global_transform
+	# Шагаем вперёд хотя бы на полрадиуса: иначе край ступеньки приходится на бок капсулы, а не под неё
+	var rest := motion.normalized() * maxf((motion - moved).length(), collision_radius * 0.5)
+	if test_move(xf, Vector3.UP * step_height):
+		return
+	xf.origin += Vector3.UP * step_height
+	if test_move(xf, rest):
+		return
+	xf.origin += rest
+	var params := PhysicsTestMotionParameters3D.new()
+	params.from = xf
+	params.motion = Vector3.DOWN * (step_height + 0.05)
+	var res := PhysicsTestMotionResult3D.new()
+	if not PhysicsServer3D.body_test_motion(get_rid(), params, res):
+		return
+	if res.get_collision_normal().y < 0.7:
+		return
+	var rise := xf.origin.y + res.get_travel().y - global_position.y
+	if rise <= 0.01:
+		return
+	global_position = xf.origin + res.get_travel()
+	_head.position.y -= rise
 
 
 ## Есть ли место над головой, чтобы встать.
