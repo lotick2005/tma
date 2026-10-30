@@ -7,16 +7,10 @@
 
 [sub_resource type="Environment" id="Environment_dark"]
 background_mode = 1
-background_color = Color(0.02, 0.022, 0.03, 1)
+background_color = Color(0.1, 0.11, 0.14, 1)
 ambient_light_source = 2
 ambient_light_color = Color(0.35, 0.38, 0.5, 1)
-ambient_light_energy = 0.35
-fog_enabled = true
-fog_mode = 1
-fog_light_color = Color(0.02, 0.022, 0.03, 1)
-fog_density = 1.0
-fog_depth_begin = 1.5
-fog_depth_end = 14.0
+ambient_light_energy = 0.15
 
 [node name="TestRoom" type="Node3D"]
 script = ExtResource("1_room")
@@ -25,7 +19,7 @@ script = ExtResource("1_room")
 environment = SubResource("Environment_dark")
 
 [node name="Player" parent="." instance=ExtResource("2_player")]
-transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0, 7)
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0, 2.5)
 
 [node name="PsxPost" parent="." instance=ExtResource("3_post")]
 

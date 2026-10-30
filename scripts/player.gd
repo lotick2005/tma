@@ -1,10 +1,17 @@
 class_name Player
 extends CharacterBody3D
-## Герой: вид от первого лица, ходьба, бег с выносливостью, присед, покачивание камеры.
+## Герой: вид от первого лица, ходьба, бег с выносливостью, присед, покачивание камеры,
+## тело (hero_body.gd), руки и светильник (hero_arms.gd, F — достать / убрать).
 ## Курсором управляет экран «Кликни, чтобы начать» (scripts/click_to_start.gd),
 ## здесь только обзор, пока курсор захвачен.
 
 enum MoveMode { STAND, CROUCH, WALK, RUN }
+
+## Слой отрисовки тела героя: от своего светильника тело тень не отбрасывает (от других — да).
+const BODY_LAYER := 2
+## Слой рук и светильника в кадре: свой светильник их не освещает (вплотную пересвечивал бы),
+## они подсвечены его огнём через self_illum.
+const VIEW_LAYER := 3
 
 ## Сменился режим движения: стоит / присел / идёт / бежит. Нужен для шума (этап 5).
 signal move_mode_changed(mode: MoveMode)
@@ -26,9 +33,9 @@ signal move_mode_changed(mode: MoveMode)
 
 @export_group("Рост и присед")
 @export var stand_height := 1.8
-@export var crouch_height := 1.0
+@export var crouch_height := 1.25
 @export var stand_eye_height := 1.62
-@export var crouch_eye_height := 0.85
+@export var crouch_eye_height := 1.1
 ## Скорость, с которой камера опускается и поднимается.
 @export var crouch_camera_speed := 8.0
 ## true — C переключает присед, false — надо держать.
@@ -59,6 +66,8 @@ var _gravity: float = ProjectSettings.get_setting("physics/3d/default_gravity")
 @onready var _collision: CollisionShape3D = $CollisionShape3D
 @onready var _head: Node3D = $Head
 @onready var _camera: Camera3D = $Head/Camera3D
+@onready var _arms: Node3D = $Head/Camera3D/Arms
+@onready var _body: Node3D = $Body
 
 
 func _ready() -> void:
@@ -68,6 +77,8 @@ func _ready() -> void:
 	_collision.shape.radius = collision_radius
 	_set_body_height(stand_height)
 	_head.position.y = stand_eye_height
+	_arms.set_lamp_out(GameState.lamp_out, true)
+	_arms.lamp_changed.connect(func(out: bool) -> void: GameState.lamp_out = out)
 
 
 func _unhandled_input(event: InputEvent) -> void:
@@ -79,6 +90,8 @@ func _unhandled_input(event: InputEvent) -> void:
 		_head.rotation.x = clampf(_head.rotation.x - d.y, -limit, limit)
 	elif event.is_action_pressed("crouch") and crouch_toggle:
 		_set_crouched(not _crouched)
+	elif event.is_action_pressed("lamp_toggle"):
+		_arms.toggle_lamp()
 
 
 func _physics_process(delta: float) -> void:
@@ -125,6 +138,8 @@ func _physics_process(delta: float) -> void:
 	var eye := crouch_eye_height if _crouched else stand_eye_height
 	_head.position.y = lerpf(_head.position.y, eye, 1.0 - exp(-crouch_camera_speed * delta))
 	_update_bob(delta, moving)
+	var speed_ratio := horizontal.length() / walk_speed if moving else 0.0
+	_body.update_pose(_head.position.y, _head.rotation.x, _bob_phase, speed_ratio, _arms.raise, delta)
 
 
 func _update_bob(delta: float, moving: bool) -> void:
