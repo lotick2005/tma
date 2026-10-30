@@ -1,0 +1,35 @@
+[gd_scene format=3]
+
+[ext_resource type="Script" path="res://scripts/western_street.gd" id="1_level"]
+[ext_resource type="Resource" path="res://data/lighting/day.tres" id="2_day"]
+[ext_resource type="PackedScene" path="res://scenes/actors/player.tscn" id="3_player"]
+[ext_resource type="PackedScene" path="res://scenes/ui/psx_post.tscn" id="4_post"]
+[ext_resource type="PackedScene" path="res://scenes/ui/click_to_start.tscn" id="5_cts"]
+[ext_resource type="PackedScene" path="res://scenes/ui/debug_panel.tscn" id="6_debug"]
+[ext_resource type="Script" path="res://scripts/debug_light.gd" id="7_dlight"]
+
+[sub_resource type="Environment" id="Environment_level"]
+background_mode = 1
+ambient_light_source = 2
+
+[node name="Level1WesternStreet" type="Node3D"]
+script = ExtResource("1_level")
+lighting = ExtResource("2_day")
+
+[node name="WorldEnvironment" type="WorldEnvironment" parent="."]
+environment = SubResource("Environment_level")
+
+[node name="Sun" type="DirectionalLight3D" parent="."]
+
+[node name="Geometry" type="Node3D" parent="."]
+
+[node name="Player" parent="." instance=ExtResource("3_player")]
+
+[node name="PsxPost" parent="." instance=ExtResource("4_post")]
+
+[node name="ClickToStart" parent="." instance=ExtResource("5_cts")]
+
+[node name="DebugPanel" parent="." instance=ExtResource("6_debug")]
+
+[node name="DebugLight" type="Node" parent="."]
+script = ExtResource("7_dlight")

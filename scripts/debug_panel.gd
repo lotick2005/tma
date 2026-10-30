@@ -2,13 +2,14 @@ extends CanvasLayer
 ## Отладочная панель подстройки картинки — только при tma/debug/keys = true.
 ## 0 — открыть / закрыть (курсор освобождается). Всё меняется вживую. Внизу — строка со всеми
 ## значениями: её можно выделить или скопировать кнопкой и прислать, чтобы вписать как значения по умолчанию.
-## Ищет уровень через родителя: WorldEnvironment, Player (тело и светильник).
+## Ищет уровень через родителя: WorldEnvironment, Player (тело и светильник), солнце (если есть).
 
 const FONT_SIZE := 8
 
 var _values := {}
 var _value_labels := {}
 var _env: Environment
+var _sun: DirectionalLight3D
 var _lamp: Node
 var _body: HeroBody
 var _panel: PanelContainer
@@ -33,27 +34,31 @@ func _input(event: InputEvent) -> void:
 ## Параметры: ключ, подпись, мин, макс, шаг, начальное значение, применить.
 func _params() -> Array:
 	var fog: Color = PsxMaterial.global_param("psx_fog_color")
-	return [
-		["fog_start", "Туман от", 0.0, 10.0, 0.05, PsxMaterial.global_param("psx_fog_start"),
-			func(v: float) -> void: RenderingServer.global_shader_parameter_set("psx_fog_start", v)],
-		["fog_end", "Туман до", 1.0, 40.0, 0.1, PsxMaterial.global_param("psx_fog_end"),
-			func(v: float) -> void: RenderingServer.global_shader_parameter_set("psx_fog_end", v)],
-		["fog_r", "Туман R", 0.0, 0.5, 0.005, fog.r, func(_v: float) -> void: _apply_fog_color()],
-		["fog_g", "Туман G", 0.0, 0.5, 0.005, fog.g, func(_v: float) -> void: _apply_fog_color()],
-		["fog_b", "Туман B", 0.0, 0.5, 0.005, fog.b, func(_v: float) -> void: _apply_fog_color()],
+	var params := [
+		["fog_start", "Туман от", 0.0, 40.0, 0.05, PsxMaterial.global_param("psx_fog_start"),
+			func(v: float) -> void: PsxMaterial.set_global("psx_fog_start", v)],
+		["fog_end", "Туман до", 1.0, 200.0, 0.1, PsxMaterial.global_param("psx_fog_end"),
+			func(v: float) -> void: PsxMaterial.set_global("psx_fog_end", v)],
+		["fog_r", "Туман R", 0.0, 1.0, 0.005, fog.r, func(_v: float) -> void: _apply_fog_color()],
+		["fog_g", "Туман G", 0.0, 1.0, 0.005, fog.g, func(_v: float) -> void: _apply_fog_color()],
+		["fog_b", "Туман B", 0.0, 1.0, 0.005, fog.b, func(_v: float) -> void: _apply_fog_color()],
 		["lamp_energy", "Свет сила", 0.0, 3.0, 0.01, _lamp.light_energy,
 			func(v: float) -> void: _lamp.light_energy = v],
 		["lamp_range", "Свет радиус", 0.5, 10.0, 0.1, _lamp.light_range,
 			func(v: float) -> void: _lamp.light_range = v],
-		["ambient", "Фон. свет", 0.0, 0.5, 0.005, _env.ambient_light_energy,
+		["ambient", "Фон. свет", 0.0, 1.5, 0.005, _env.ambient_light_energy,
 			func(v: float) -> void: _env.ambient_light_energy = v],
 		["arm_glow", "Подсв. рук", 0.0, 1.0, 0.01, _body.lamp_glow,
 			func(v: float) -> void: _body.lamp_glow = v],
 		["snap", "Дрожание", 0.0, 4.0, 0.1, PsxMaterial.global_param("psx_snap_pixels"),
-			func(v: float) -> void: RenderingServer.global_shader_parameter_set("psx_snap_pixels", v)],
+			func(v: float) -> void: PsxMaterial.set_global("psx_snap_pixels", v)],
 		["affine", "Аффинность", 0.0, 1.0, 0.01, PsxMaterial.global_param("psx_affine"),
-			func(v: float) -> void: RenderingServer.global_shader_parameter_set("psx_affine", v)],
+			func(v: float) -> void: PsxMaterial.set_global("psx_affine", v)],
 	]
+	if _sun and _sun.visible:
+		params.append(["sun", "Солнце", 0.0, 3.0, 0.01, _sun.light_energy,
+			func(v: float) -> void: _sun.light_energy = v])
+	return params
 
 
 func _bind() -> void:
@@ -66,6 +71,9 @@ func _bind() -> void:
 	_env = (envs[0] as WorldEnvironment).environment
 	_body = player.get_node("Body")
 	_lamp = player.get_node("Body/OilLamp")
+	var suns := level.find_children("*", "DirectionalLight3D", true, false)
+	if not suns.is_empty():
+		_sun = suns[0]
 	_build()
 	_set_open(false)
 
@@ -139,7 +147,7 @@ func _build() -> void:
 
 func _apply_fog_color() -> void:
 	var c := Color(_values.get("fog_r", 0.0), _values.get("fog_g", 0.0), _values.get("fog_b", 0.0))
-	RenderingServer.global_shader_parameter_set("psx_fog_color", c)
+	PsxMaterial.set_global("psx_fog_color", c)
 	_env.background_color = c
 
 
