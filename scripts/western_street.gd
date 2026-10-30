@@ -45,6 +45,7 @@ func _ready() -> void:
 	var q: Dictionary = D.QUARTER.duplicate()
 	q.shop = D.SHOP
 	q.crown = D.WILSON_ARCH.crown
+	q.styles = D.HOUSE_STYLES
 	_quarter = QuarterBuilder.new(_b, _m, q, D.QUARTER_MAP, D.TERRACES,
 		WorldCoords.point(D.QUARTER.x, D.QUARTER.y), _plaza_y, _wall_top)
 	_quarter.build()
@@ -115,6 +116,9 @@ func _make_materials() -> void:
 	_m.plaster_a = PsxMaterial.make(ProcTextures.plaster(64, Color(0.84, 0.8, 0.7), 21))
 	_m.plaster_b = PsxMaterial.make(ProcTextures.plaster(64, Color(0.82, 0.74, 0.64), 22))
 	_m.plaster_in = PsxMaterial.make(ProcTextures.plaster(64, Color(0.78, 0.74, 0.66), 23))
+	# Белая штукатурка богатых домов и охристая обмазка бедных
+	_m.white = PsxMaterial.make(ProcTextures.plaster(64, Color(0.93, 0.92, 0.88), 18))
+	_m.ochre = PsxMaterial.make(ProcTextures.plaster(64, Color(0.76, 0.58, 0.36), 19))
 	_m.rubble = PsxMaterial.make(ProcTextures.rubble(64, 22, Color(0.7, 0.64, 0.52), Color(0.82, 0.78, 0.7), 24))
 	_m.rubble_in = PsxMaterial.make(ProcTextures.rubble(64, 18, Color(0.6, 0.55, 0.46), Color(0.7, 0.66, 0.6), 25))
 	_m.earth = PsxMaterial.make(ProcTextures.mottled(64, Color(0.55, 0.45, 0.33), 0.05, 0.1, 26))

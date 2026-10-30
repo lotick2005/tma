@@ -10,9 +10,9 @@ extends RefCounted
 
 const WALLS := "#%Vr"
 const ROOMS := "_:"
-const DOORS := "DdxoBH"
-## Закрытые двери: не пройти.
-const CLOSED_DOORS := "DBH"
+const DOORS := "DdxoBHc"
+## Закрытые двери: не пройти (c — занавесь у бедных: за ней завалено, тоже не пройти).
+const CLOSED_DOORS := "DBHc"
 ## Земля улиц и дворов, по которой ходят.
 const OPEN_GROUND := ".+,*bo"
 ## Под крышей (внутренний свет): комнаты, подвал, лестница вниз.
@@ -176,7 +176,7 @@ func _solids_calc(c: int, r: int) -> Variant:
 			return [Vector2(lo, deck_y)]
 		"_", ":":
 			return [Vector2(lo, g), Vector2(ceil_y, top)]
-		"D", "d", "x", "o", "B", "H":
+		"D", "d", "x", "o", "B", "H", "c":
 			return [Vector2(lo, g), Vector2(g + _cfg.door_height, top)]
 		"r":
 			return [Vector2(lo, g + _ruin_height(c, r))]
@@ -220,7 +220,13 @@ static func _subtract(a: Array, b: Array) -> Array:
 
 # ─── Грани ───────────────────────────────────────────────────────────────────
 
-## Стиль наружной стены дома: штукатурка двух оттенков или бутовая кладка — пятнами по кварталу.
+## Отделка наружной стены дома (ключ материала): white — белая штукатурка богатого дома (цоколь — тёсаный камень),
+## plaster_a / plaster_b — кремовая штукатурка, ochre — охристая обмазка, rubble — рваный камень (бедные).
+## Дома из HOUSE_STYLES в данных — как указано, остальные — пятнами по кварталу.
+func wall_style(c: int, r: int) -> String:
+	return _wall_style(c, r)
+
+
 func _wall_style(c: int, r: int) -> String:
 	if c < 0 or r < 0 or c >= w or r >= h:
 		return "plaster_a"
@@ -228,14 +234,11 @@ func _wall_style(c: int, r: int) -> String:
 
 
 func _wall_style_calc(c: int, r: int) -> String:
-	var hsh := (int(c / 7) * 73856093) ^ (int(r / 9) * 19349663)
-	match absi(hsh) % 3:
-		0:
-			return "plaster_a"
-		1:
-			return "plaster_b"
-		_:
-			return "rubble"
+	for e: Array in _cfg.get("styles", []):
+		if c >= e[0] and r >= e[1] and c <= e[2] and r <= e[3]:
+			return e[4]
+	var hsh := (int(c / 6) * 73856093) ^ (int(r / 8) * 19349663)
+	return ["plaster_a", "plaster_b", "ochre", "rubble"][absi(hsh) % 4]
 
 
 func _build_faces() -> void:
@@ -308,9 +311,11 @@ func _side_material(k: String, nk: String, rel_y: float, neighbor_in: bool, c: i
 		# Подступенки и края земли
 		return "paving"
 	if k in WALLS or k in ROOMS or k in INDOOR:
+		var style := _wall_style(c, r)
 		if rel_y < 0.9:
-			return "rubble"
-		return _wall_style(c, r)
+			# Цоколь: у богатых — тёсаный камень, у остальных — бут
+			return "ashlar" if style == "white" else "rubble"
+		return style
 	return "paving"
 
 
@@ -890,6 +895,11 @@ func _build_doors() -> void:
 					_b.add_mesh(leaf_mesh, xf, _mat.door)
 					_b.collision_box(Transform3D(Basis(Vector3.UP, yaw), center + in3 * 0.3 + Vector3.UP * 1.05), Vector3(1.0, 2.1, 0.5))
 					_barricade(center + in3 * 1.0, yaw)
+				"c":
+					# Занавесь в проёме, край отогнут; за ней темно, пройти нельзя
+					var xf := Transform3D(Basis(Vector3.UP, yaw), center + out3 * 0.2)
+					_b.add_mesh(PropLibrary.mesh("curtain"), xf, PropLibrary.material())
+					_b.collision_box(Transform3D(Basis(Vector3.UP, yaw), center + in3 * 0.2 + Vector3.UP * 1.05), Vector3(1.0, 2.1, 0.4))
 				"d":
 					var open := deg_to_rad(65.0 + _rng.randf() * 20.0)
 					var basis := Basis(Vector3.UP, yaw - open)

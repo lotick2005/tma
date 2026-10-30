@@ -2,20 +2,29 @@ class_name Glows
 extends RefCounted
 ## Огоньки уровня (shaders/glow.gdshader): пламя в нишах, жаровни, маяк. Тёплые точки видны сквозь
 ## туман и ведут игрока. Все огоньки одного вида — один меш, то есть один вызов отрисовки.
-## Виды: NEAR — ближние (ниши, светильники: гаснут к ~45 м), FAR — дальние (жаровни, маяк: видны через весь уровень).
+## Виды: NEAR — ближние (ниши, светильники: гаснут к ~45 м), FAR — дальние (жаровни, маяк: видны через весь уровень),
+## SMOKE — дым (печь гончара): клубы поднимаются и тают, подсвечены огнём снизу (shaders/smoke.gdshader).
 ## Настоящий свет (OmniLight3D) огоньки не дают — только картинку; где нужен свет, его ставит уровень.
 
-enum Kind { NEAR, FAR }
+enum Kind { NEAR, FAR, SMOKE }
 
 ## Тёплый цвет огня.
 const FIRE := Color(1.0, 0.58, 0.22)
 
-var _quads := {Kind.NEAR: [], Kind.FAR: []}
+var _quads := {Kind.NEAR: [], Kind.FAR: [], Kind.SMOKE: []}
 
 
 ## Огонёк: центр в мировых координатах, радиус (м), цвет, яркость.
 func add(pos: Vector3, radius: float, kind: Kind = Kind.NEAR, color: Color = FIRE, intensity: float = 1.0) -> void:
 	(_quads[kind] as Array).append([pos, radius, Color(color.r, color.g, color.b, intensity)])
+
+
+## Столб дыма над точкой pos: несколько клубов радиуса radius с разной фазой подъёма.
+func add_smoke(pos: Vector3, radius: float, clouds: int = 10) -> void:
+	for i in clouds:
+		# Центры чуть разные — по ним шейдер даёт каждому клубу свою фазу
+		var p := pos + Vector3(0.013 * i, 0.0, -0.011 * i)
+		(_quads[Kind.SMOKE] as Array).append([p, radius, Color(0.32, 0.2, 0.16, 0.55)])
 
 
 ## Создать меши под узлом parent. Вызвать один раз в конце сборки.
@@ -24,6 +33,7 @@ func commit(parent: Node3D) -> void:
 	var params := {
 		Kind.NEAR: {"fade_start": 30.0, "fade_end": 45.0, "flicker": 0.3, "min_angle": 0.011},
 		Kind.FAR: {"fade_start": 400.0, "fade_end": 500.0, "flicker": 0.22, "min_angle": 0.022},
+		Kind.SMOKE: {"rise": 9.0, "speed": 0.05},
 	}
 	for kind in _quads:
 		var list: Array = _quads[kind]
@@ -49,12 +59,12 @@ func commit(parent: Node3D) -> void:
 		var mesh := ArrayMesh.new()
 		mesh.add_surface_from_arrays(Mesh.PRIMITIVE_TRIANGLES, arrays)
 		var mat := ShaderMaterial.new()
-		mat.shader = preload("res://shaders/glow.gdshader")
+		mat.shader = preload("res://shaders/smoke.gdshader") if kind == Kind.SMOKE else preload("res://shaders/glow.gdshader")
 		mat.set_shader_parameter("glow_texture", tex)
 		for key in params[kind]:
 			mat.set_shader_parameter(key, params[kind][key])
 		var mi := MeshInstance3D.new()
-		mi.name = "Glows" + ("Far" if kind == Kind.FAR else "Near")
+		mi.name = "Glows" + ["Near", "Far", "Smoke"][kind]
 		mi.mesh = mesh
 		mi.material_override = mat
 		mi.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
