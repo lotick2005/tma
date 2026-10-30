@@ -3,12 +3,14 @@ extends CanvasLayer
 ## 0 — открыть / закрыть (курсор освобождается). Всё меняется вживую. Внизу — строка со всеми
 ## значениями: её можно выделить или скопировать кнопкой и прислать, чтобы вписать как значения по умолчанию.
 ## Ищет уровень через родителя: WorldEnvironment, Player (тело и светильник), солнце (если есть).
+## Если уровень умеет (toggle_day, cycle_sky) — кнопки «день / тьма» и «небо во тьме».
 
 const FONT_SIZE := 8
 
 var _values := {}
 var _value_labels := {}
 var _env: Environment
+var _level: Node
 var _sun: DirectionalLight3D
 var _lamp: Node
 var _body: HeroBody
@@ -63,6 +65,7 @@ func _params() -> Array:
 
 func _bind() -> void:
 	var level := get_parent()
+	_level = level
 	var envs := level.find_children("*", "WorldEnvironment", true, false)
 	var player := level.find_child("Player", true, false)
 	if envs.is_empty() or player == null:
@@ -131,6 +134,23 @@ func _build() -> void:
 			_refresh())
 		grid.add_child(row)
 
+	if _level and _level.has_method("toggle_day"):
+		var row := HBoxContainer.new()
+		box.add_child(row)
+		var day_btn := Button.new()
+		day_btn.text = "Сейчас: " + ("день" if _level.is_day() else "тьма") + " — переключить"
+		day_btn.pressed.connect(func() -> void:
+			_level.toggle_day()
+			_rebuild())
+		row.add_child(day_btn)
+		if not _level.is_day():
+			var sky_btn := Button.new()
+			sky_btn.text = "Небо: " + _level.sky_name()
+			sky_btn.pressed.connect(func() -> void:
+				_level.cycle_sky()
+				_rebuild())
+			row.add_child(sky_btn)
+
 	var hint := Label.new()
 	hint.text = "Строка значений (выдели или нажми «Копировать»):"
 	box.add_child(hint)
@@ -143,6 +163,15 @@ func _build() -> void:
 	copy.pressed.connect(func() -> void: DisplayServer.clipboard_set(_out.text))
 	box.add_child(copy)
 	_refresh()
+
+
+## Пересобрать панель после смены света: ползунки берут новые значения.
+func _rebuild() -> void:
+	_panel.queue_free()
+	_values.clear()
+	_value_labels.clear()
+	_build()
+	_set_open(true)
 
 
 func _apply_fog_color() -> void:
