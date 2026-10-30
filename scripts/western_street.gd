@@ -13,8 +13,8 @@ const SINK := 0.3
 ## Тонкие жерди лесов не режем на ячейки по 1 м: текстура на них почти не плывёт.
 const THIN_CELL := 4.0
 ## Дальность «местной» геометрии (квартал, предметы): во тьме дальше тумана рисовать незачем.
-const DETAIL_RANGE_DARK := 45.0
-const DETAIL_RANGE_DAY := 90.0
+const DETAIL_RANGE_DARK := 36.0
+const DETAIL_RANGE_DAY := 70.0
 
 ## Пресеты освещения: «тьма» — вся игра, «день» — вступление (этап 4). Переключатель — в панели (0).
 @export var darkness: LightingPreset
@@ -47,6 +47,14 @@ func _ready() -> void:
 	_quarter = QuarterBuilder.new(_b, _m, q, D.QUARTER_MAP, D.TERRACES,
 		WorldCoords.point(D.QUARTER.x, D.QUARTER.y), _plaza_y, _wall_top)
 	_quarter.build()
+	var props := QuarterProps.new(_quarter, _b, D.PROP_DENSITY)
+	props.build(D.ROOMS, D.PROPS)
+	_b.local = true
+	for e in D.PLAZA_PROPS:
+		var pos := WorldCoords.point(e[1], e[2])
+		pos.y = _plaza_y
+		props.place(e[0], pos, deg_to_rad(e[3]))
+	_b.local = false
 	_build_ground()
 	_build_temple_mount()
 	_build_royal_stoa()

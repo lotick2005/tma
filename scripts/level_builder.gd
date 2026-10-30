@@ -10,7 +10,7 @@ extends RefCounted
 ## туман их всё равно скрывает). Какой вид и слой у следующих мешей — переменные local и layer.
 
 const CHUNK := 40.0
-const LOCAL_CHUNK := 16.0
+const LOCAL_CHUNK := 24.0
 ## Слой «внутри домов»: небесный свет (солнце, чёрное солнце, луна) его не освещает.
 const INTERIOR_LAYER := 4
 
@@ -30,6 +30,10 @@ var local_instances: Array[GeometryInstance3D] = []
 
 var _batches := {}
 var _batch_info := {}
+## Повторяющиеся мелочи: ключ -> [меш, материал, слой, центр куска, PackedFloat32Array трансформов]
+var _instances := {}
+## Куски для MultiMesh крупнее: меньше вызовов отрисовки.
+const INSTANCE_CHUNK := 32.0
 var _inflate_counter := 0
 ## Формы коллизии по мешу: одинаковые лавки делят одну форму.
 var _trimesh_cache := {}
@@ -58,6 +62,17 @@ func add_mesh(mesh: Mesh, xform: Transform3D, mat: Material) -> void:
 		_batch_info[key] = [mat, layer, local, Vector3((cx + 0.5) * size, 0.0, (cz + 0.5) * size)]
 	var origin: Vector3 = _batch_info[key][3]
 	st.append_from(mesh, 0, Transform3D(Basis(), -origin) * xform)
+
+
+## Экземпляр повторяющегося предмета (MultiMeshInstance3D по кускам INSTANCE_CHUNK м, «местный»).
+func add_instance(mesh: Mesh, xform: Transform3D, mat: Material) -> void:
+	var cx := floori(xform.origin.x / INSTANCE_CHUNK)
+	var cz := floori(xform.origin.z / INSTANCE_CHUNK)
+	var key := "%d:%d:%d:%d" % [mesh.get_instance_id(), layer, cx, cz]
+	if not _instances.has(key):
+		_instances[key] = [mesh, mat, layer, Vector3((cx + 0.5) * INSTANCE_CHUNK, 0.0, (cz + 0.5) * INSTANCE_CHUNK), []]
+	var entry: Array = _instances[key]
+	(entry[4] as Array).append(Transform3D(xform.basis, xform.origin - entry[3]))
 
 
 ## Ящик: base — центр нижней грани, size — размер, yaw — поворот вокруг Y (рад).
@@ -146,6 +161,27 @@ func commit() -> void:
 		i += 1
 	_batches.clear()
 	_batch_info.clear()
+	for key in _instances:
+		var entry: Array = _instances[key]
+		var xforms: Array = entry[4]
+		var mm := MultiMesh.new()
+		mm.transform_format = MultiMesh.TRANSFORM_3D
+		mm.mesh = entry[0]
+		mm.instance_count = xforms.size()
+		for j in xforms.size():
+			mm.set_instance_transform(j, xforms[j])
+		var mmi := MultiMeshInstance3D.new()
+		mmi.name = "Many%d" % i
+		mmi.multimesh = mm
+		mmi.material_override = entry[1]
+		mmi.layers = 1 << (int(entry[2]) - 1)
+		mmi.position = entry[3]
+		mmi.visibility_range_end = detail_range
+		mmi.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
+		local_instances.append(mmi)
+		root.add_child(mmi)
+		i += 1
+	_instances.clear()
 
 
 ## Дальность местных кусков (днём видно далеко, во тьме — нет смысла рисовать дальше тумана).
