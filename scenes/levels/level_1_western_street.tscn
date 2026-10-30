@@ -2,6 +2,8 @@
 
 [ext_resource type="Script" path="res://scripts/western_street.gd" id="1_level"]
 [ext_resource type="Resource" path="res://data/lighting/day.tres" id="2_day"]
+[ext_resource type="Resource" path="res://data/lighting/darkness.tres" id="8_dark"]
+[ext_resource type="Script" path="res://scripts/dark_sky.gd" id="9_sky"]
 [ext_resource type="PackedScene" path="res://scenes/actors/player.tscn" id="3_player"]
 [ext_resource type="PackedScene" path="res://scenes/ui/psx_post.tscn" id="4_post"]
 [ext_resource type="PackedScene" path="res://scenes/ui/click_to_start.tscn" id="5_cts"]
@@ -14,12 +16,16 @@ ambient_light_source = 2
 
 [node name="Level1WesternStreet" type="Node3D"]
 script = ExtResource("1_level")
-lighting = ExtResource("2_day")
+darkness = ExtResource("8_dark")
+day = ExtResource("2_day")
 
 [node name="WorldEnvironment" type="WorldEnvironment" parent="."]
 environment = SubResource("Environment_level")
 
 [node name="Sun" type="DirectionalLight3D" parent="."]
+
+[node name="DarkSky" type="Node3D" parent="."]
+script = ExtResource("9_sky")
 
 [node name="Geometry" type="Node3D" parent="."]
 

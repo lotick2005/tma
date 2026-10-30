@@ -213,3 +213,43 @@ static func gate_door(size: int, wood_color: Color, bronze: Color, bands: int = 
 				if y >= 0 and y < size:
 					img.set_pixel(x, y, bronze.lightened(0.2))
 	return ImageTexture.create_from_image(img)
+
+
+## Бутовая кладка жилых домов: неровные камни (ячейки Вороного) в светлом растворе. Бесшовная.
+static func rubble(size: int, stones: int, base: Color, mortar: Color, seed: int = 1) -> ImageTexture:
+	var img := Image.create_empty(size, size, false, Image.FORMAT_RGB8)
+	var rng := RandomNumberGenerator.new()
+	rng.seed = seed
+	var pts: Array[Vector2] = []
+	var tints: Array[float] = []
+	for i in stones:
+		pts.append(Vector2(rng.randf() * size, rng.randf() * size))
+		tints.append(rng.randf_range(-0.08, 0.08))
+	for y in size:
+		for x in size:
+			var d1 := INF
+			var d2 := INF
+			var best := 0
+			for i in stones:
+				# Расстояние с заворотом краёв — текстура стыкуется
+				var dx := absf(x + 0.5 - pts[i].x)
+				var dy := absf(y + 0.5 - pts[i].y)
+				dx = minf(dx, size - dx)
+				dy = minf(dy, size - dy)
+				var d := dx * dx + dy * dy * 1.6
+				if d < d1:
+					d2 = d1
+					d1 = d
+					best = i
+				elif d < d2:
+					d2 = d
+			var n := rng.randf_range(-0.03, 0.03)
+			var c := mortar
+			if sqrt(d2) - sqrt(d1) > 1.6:
+				var t: float = tints[best]
+				c = Color(base.r + t, base.g + t * 0.9, base.b + t * 0.8)
+				# Тень по нижнему краю камня
+				if sqrt(d2) - sqrt(d1) < 2.6:
+					c = c.darkened(0.12)
+			img.set_pixel(x, y, Color(c.r + n, c.g + n, c.b + n))
+	return ImageTexture.create_from_image(img)

@@ -1,8 +1,8 @@
 extends Node3D
-## Уровень 1 «Западная улица» (блокаут): от площади A у арки Робинсона на север вдоль Западной стены
-## Храмовой горы до ворот Антонии. Днём, при солнце.
+## Уровень 1 «Западная улица» (блокаут): от площади A у арки Робинсона через жилой квартал
+## западнее Западной стены (долина Тиропеон) до ворот Антонии. Во тьме.
 ## Все координаты и размеры — в res://data/level_1_western_street.gd; здесь только сборка.
-## Точки карты в игру переводит WorldCoords (k применяется только там).
+## Точки карты в игру переводит WorldCoords (k применяется только там); квартал строит QuarterBuilder.
 
 ## Герой вошёл в триггер за воротами Антонии.
 signal level_finished
@@ -12,84 +12,151 @@ const D := preload("res://data/level_1_western_street.gd")
 const SINK := 0.3
 ## Тонкие жерди лесов не режем на ячейки по 1 м: текстура на них почти не плывёт.
 const THIN_CELL := 4.0
+## Дальность «местной» геометрии (квартал, предметы): во тьме дальше тумана рисовать незачем.
+const DETAIL_RANGE_DARK := 36.0
+const DETAIL_RANGE_DAY := 70.0
 
-## Пресет освещения (res://data/lighting/day.tres). На этапе 4 переключится на «тьму».
-@export var lighting: LightingPreset
+## Пресеты освещения: «тьма» — вся игра, «день» — вступление (этап 4). Переключатель — в панели (0).
+@export var darkness: LightingPreset
+@export var day: LightingPreset
 
 var _b: LevelBuilder
+var _quarter: QuarterBuilder
 var _m := {}
 ## Y верха стены Храмовой горы (платформы) в игре.
 var _wall_top := 0.0
-## Где кончается мостовая (X): лавки + ширина улицы от лица стены на запад.
-var _street_west := 0.0
+## Y мостовой площади A.
+var _plaza_y := 0.0
 var _finished := false
+var _is_day := false
 
 @onready var _player: Player = $Player
 @onready var _geometry: Node3D = $Geometry
+@onready var _sky: DarkSky = $DarkSky
 
 
 func _ready() -> void:
 	GameState.current_level = "level_1"
-	lighting.apply($WorldEnvironment.environment, $Sun, _player.get_node("Head/Camera3D"))
 	_make_materials()
-	_street_west = -(D.STREET.shop_depth + D.STREET.width)
-	_wall_top = _street_y(WorldCoords.gz(D.SPAWN.y)) + D.TEMPLE_WALL.height
+	_plaza_y = WorldCoords.gy(D.PLAZA.h)
+	_wall_top = _plaza_y + D.TEMPLE_WALL.height
 	_b = LevelBuilder.new(_geometry)
+	var q: Dictionary = D.QUARTER.duplicate()
+	q.shop = D.SHOP
+	q.crown = D.WILSON_ARCH.crown
+	_quarter = QuarterBuilder.new(_b, _m, q, D.QUARTER_MAP, D.TERRACES,
+		WorldCoords.point(D.QUARTER.x, D.QUARTER.y), _plaza_y, _wall_top)
+	_quarter.build()
+	var props := QuarterProps.new(_quarter, _b, D.PROP_DENSITY)
+	props.build(D.ROOMS, D.PROPS)
+	_b.local = true
+	for e in D.PLAZA_PROPS:
+		var pos := WorldCoords.point(e[1], e[2])
+		pos.y = _plaza_y
+		props.place(e[0], pos, deg_to_rad(e[3]))
+	_b.local = false
 	_build_ground()
 	_build_temple_mount()
 	_build_royal_stoa()
 	_build_robinson_arch()
-	_build_shops()
-	_build_wilson_arch()
+	_build_wilson_causeway()
 	_build_houses()
 	_build_construction()
 	_build_antonia()
 	_build_bounds()
 	_b.commit()
 	_place_player()
+	_apply_lighting()
 
 
-## Y мостовой в точке z (Godot) — по профилю STREET_PROFILE.
-func _street_y(z: float) -> float:
-	var y := -z / WorldCoords.K
-	var prof: Array = D.STREET_PROFILE
-	var h: float = prof[0].y
-	if y >= prof[prof.size() - 1].x:
-		h = prof[prof.size() - 1].y
+func _process(_delta: float) -> void:
+	# Отсвет кровавой луны — только на верхах стен: полоса высот считается от земли под героем
+	var band := _current_preset().dir_light_band()
+	if band.x > -100.0:
+		var g := _ground_y(_player.global_position.z)
+		PsxMaterial.set_global("psx_dir_light_y0", g + band.x)
+		PsxMaterial.set_global("psx_dir_light_y1", g + band.y)
+
+
+## Y земли в точке z: в квартале — по террасам, южнее — площадь, севернее — у ворот Антонии.
+func _ground_y(z: float) -> float:
+	if _quarter == null or z > _quarter.z0 + _quarter.h:
+		return _plaza_y
+	return _quarter.ground_at_z(z)
+
+
+# ─── Свет ────────────────────────────────────────────────────────────────────
+
+func _current_preset() -> LightingPreset:
+	return day if _is_day else darkness
+
+
+func _apply_lighting() -> void:
+	var preset := _current_preset()
+	preset.apply($WorldEnvironment.environment, $Sun, _player.get_node("Head/Camera3D"), _sky,
+		1 << (LevelBuilder.INTERIOR_LAYER - 1))
+	_b.set_detail_range(DETAIL_RANGE_DAY if _is_day else DETAIL_RANGE_DARK)
+
+
+## Для отладочной панели: день / тьма.
+func toggle_day() -> void:
+	_is_day = not _is_day
+	_apply_lighting()
+
+
+func is_day() -> bool:
+	return _is_day
+
+
+## Для отладочной панели: чёрное солнце ⇄ кровавая луна.
+func cycle_sky() -> void:
+	if darkness.sky_body == LightingPreset.SkyBody.BLACK_SUN:
+		darkness.sky_body = LightingPreset.SkyBody.BLOOD_MOON
 	else:
-		for i in prof.size() - 1:
-			var a: Vector2 = prof[i]
-			var b: Vector2 = prof[i + 1]
-			if y >= a.x and y <= b.x:
-				h = lerpf(a.y, b.y, (y - a.x) / (b.x - a.x))
-				break
-	return WorldCoords.gy(h)
+		darkness.sky_body = LightingPreset.SkyBody.BLACK_SUN
+	_apply_lighting()
+
+
+func sky_name() -> String:
+	return "чёрное солнце" if darkness.sky_body == LightingPreset.SkyBody.BLACK_SUN else "кровавая луна"
 
 
 func _make_materials() -> void:
 	var limestone := Color(0.84, 0.78, 0.64)
 	_m.ashlar = PsxMaterial.make(ProcTextures.ashlar(128, 4, limestone, 11))
 	_m.slab = PsxMaterial.make(ProcTextures.ashlar(128, 3, Color(0.8, 0.77, 0.68), 12, 0, false, 0.4, 0.9, 0.2, 0.025))
-	_m.paving = PsxMaterial.make(ProcTextures.ashlar(128, 4, Color(0.7, 0.66, 0.58), 13, 0, false, 0.25, 0.6, 0.45, 0.05))
+	_m.paving = PsxMaterial.make(ProcTextures.ashlar(64, 2, Color(0.7, 0.66, 0.58), 13, 0, false, 0.25, 0.6, 0.45, 0.05))
+	_m.lintel = PsxMaterial.make(ProcTextures.ashlar(64, 2, Color(0.82, 0.78, 0.68), 14, 2, true, 0.4, 0.8, 0.35, 0.04))
 	_m.plaster_a = PsxMaterial.make(ProcTextures.plaster(64, Color(0.84, 0.8, 0.7), 21))
 	_m.plaster_b = PsxMaterial.make(ProcTextures.plaster(64, Color(0.82, 0.74, 0.64), 22))
+	_m.plaster_in = PsxMaterial.make(ProcTextures.plaster(64, Color(0.78, 0.74, 0.66), 23))
+	_m.rubble = PsxMaterial.make(ProcTextures.rubble(64, 22, Color(0.7, 0.64, 0.52), Color(0.82, 0.78, 0.7), 24))
+	_m.rubble_in = PsxMaterial.make(ProcTextures.rubble(64, 18, Color(0.6, 0.55, 0.46), Color(0.7, 0.66, 0.6), 25))
+	_m.earth = PsxMaterial.make(ProcTextures.mottled(64, Color(0.55, 0.45, 0.33), 0.05, 0.1, 26))
+	_m.floor = PsxMaterial.make(ProcTextures.mottled(64, Color(0.5, 0.43, 0.34), 0.04, 0.08, 27))
+	_m.roof = PsxMaterial.make(ProcTextures.mottled(64, Color(0.68, 0.64, 0.56), 0.04, 0.1, 28))
+	_m.ceiling = PsxMaterial.make(ProcTextures.wood(64, 6, Color(0.38, 0.27, 0.17), 29))
 	_m.wood = PsxMaterial.make(ProcTextures.wood(64, 4, Color(0.5, 0.36, 0.22), 31))
+	_m.door = PsxMaterial.make(ProcTextures.gate_door(64, Color(0.46, 0.32, 0.19), Color(0.36, 0.26, 0.17), 2, 32))
 	_m.cedar = PsxMaterial.make(ProcTextures.wood(64, 8, Color(0.42, 0.27, 0.16), 32))
 	_m.column = PsxMaterial.make(ProcTextures.mottled(64, Color(0.93, 0.91, 0.86), 0.03, 0.05, 41))
 	_m.gate = PsxMaterial.make(ProcTextures.gate_door(64, Color(0.42, 0.28, 0.16), Color(0.66, 0.47, 0.2), 3, 51))
-	_m.dark = PsxMaterial.make(null, Color(0.1, 0.08, 0.07))
+	_m.water = PsxMaterial.make(null, Color(0.08, 0.12, 0.13))
 
 
-## ─── Мостовая ────────────────────────────────────────────────────────────────
+## ─── Мостовая площади и у ворот ──────────────────────────────────────────────
 func _build_ground() -> void:
-	var height_at := func(_x: float, z: float) -> float: return _street_y(z)
-	var x_west := -D.STREET.ground_width
-	var z_south := WorldCoords.gz(D.STREET.y_south)
-	var z_north := WorldCoords.gz(D.STREET.y_north)
-	_terrain(x_west, 0.5, z_south, z_north, height_at)
-	# Площадь A на восток вдоль Южной стены (под стеной — чуть внутрь, чтобы не было щели)
-	var wall_z := WorldCoords.gz(D.TEMPLE_WALL.y_south)
-	_terrain(0.5, WorldCoords.gx(D.PLAZA.x_east) + 2.0, z_south, wall_z - 0.5, height_at)
+	var p: Dictionary = D.PLAZA
+	var flat := func(_x: float, _z: float) -> float: return _plaza_y
+	# Площадь A (под аркой и южнее), на восток — вдоль Южной стены
+	var z_n := WorldCoords.gz(p.y_north)
+	var z_s := WorldCoords.gz(p.y_south) + 2.0
+	_terrain(-17.5, 0.5, z_s, z_n, flat)
+	_terrain(0.5, WorldCoords.gx(p.x_east) + 2.0, z_s, WorldCoords.gz(D.TEMPLE_WALL.y_south) - 0.5, flat)
+	# У ворот Антонии и за ними — на уровне северной террасы
+	var top := _quarter.ground[0]
+	var gate_flat := func(_x: float, _z: float) -> float: return top
+	_terrain(WorldCoords.gx(D.ANTONIA_GATE.x_west), 0.5, _quarter.z0 + 0.5, WorldCoords.gz(520.0), gate_flat)
 
 
 ## Рельеф кусками по 20 м: каждый кусок — свой пакет, чтобы камера отсекала дальние.
@@ -105,15 +172,15 @@ func _terrain(x0: float, x1: float, z_south: float, z_north: float, height_at: C
 ## ─── Храмовая гора: Западная и Южная стены ───────────────────────────────────
 func _build_temple_mount() -> void:
 	var w: Dictionary = D.TEMPLE_WALL
-	var bottom := _street_y(WorldCoords.gz(D.STREET.y_south)) - 2.0
+	var bottom := _plaza_y - 2.0
 	var z_sw := WorldCoords.gz(w.y_south)
 	var z_nw := WorldCoords.gz(w.y_north)
 	var t: float = w.thickness
 	# Южная стена от ЮЗ угла на восток; Западная — от неё на север (стык без двойных граней)
 	_b.box_between(Vector3(0.0, bottom, z_sw), Vector3(WorldCoords.gx(w.x_east), _wall_top, z_sw - t),
-		_m.ashlar, 4.0, true, PsxMesh.FACE_NORTH | PsxMesh.FACE_BOTTOM | PsxMesh.FACE_TOP)
+		_m.ashlar, 4.0, true, PsxMesh.FACE_NORTH | PsxMesh.FACE_BOTTOM | PsxMesh.FACE_TOP, 2.0)
 	_b.box_between(Vector3(0.0, bottom, z_sw - t), Vector3(t, _wall_top, z_nw),
-		_m.ashlar, 4.0, true, PsxMesh.FACE_EAST | PsxMesh.FACE_SOUTH | PsxMesh.FACE_NORTH | PsxMesh.FACE_BOTTOM | PsxMesh.FACE_TOP)
+		_m.ashlar, 4.0, true, PsxMesh.FACE_EAST | PsxMesh.FACE_SOUTH | PsxMesh.FACE_NORTH | PsxMesh.FACE_BOTTOM | PsxMesh.FACE_TOP, 2.0)
 	# Над платформой: низкий парапет над Царской стоей и задняя стена Западного портика дальше на север
 	var stoa_north := z_sw - D.ROYAL_STOA.rows[-1] - 3.0
 	var ph: float = w.parapet_height
@@ -152,7 +219,7 @@ func _build_robinson_arch() -> void:
 	var a: Dictionary = D.ROBINSON_ARCH
 	var zc := WorldCoords.gz(a.y)
 	var hw: float = a.width * 0.5
-	var sy := _street_y(zc) - 0.1
+	var sy := _ground_y(zc) - 0.1
 	var span: float = a.span
 	var pier: float = a.pier
 	var deck: float = sy + a.height
@@ -163,8 +230,8 @@ func _build_robinson_arch() -> void:
 	for side in [-1.0, 1.0]:
 		var z: float = zc + side * (hw - 0.2)
 		_b.box_between(Vector3(-span - pier, deck, z - 0.2), Vector3(0.0, deck + 1.1, z + 0.2), _m.ashlar, 4.0, false)
-	_b.box_between(Vector3(-0.06, deck, zc - a.door_width * 0.5), Vector3(0.0, deck + a.door_height, zc + a.door_width * 0.5),
-		_m.dark, 1.0, false, PsxMesh.FACE_EAST)
+	_b.box_between(Vector3(-0.08, deck, zc - a.door_width * 0.5), Vector3(0.0, deck + a.door_height, zc + a.door_width * 0.5),
+		_m.gate, 2.0, false, PsxMesh.FACE_EAST)
 
 	# Лестница: от опоры на юг, вниз до мостовой. Пролёт 0 — у опоры, последний — внизу.
 	var st: Dictionary = D.ROBINSON_STAIR
@@ -174,12 +241,12 @@ func _build_robinson_arch() -> void:
 	var x_e := -span
 	var z_top := zc + hw
 	var z_foot: float = z_top + st.length
-	var foot_y := _street_y(z_foot)
+	var foot_y := _ground_y(z_foot)
 	var stair_y := func(z: float) -> float: return lerpf(deck, foot_y, (z - z_top) / st.length)
 	for i in n:
 		var z_n := z_top + seg * i
 		var z_s := z_n + seg
-		var base := minf(_street_y(z_s), _street_y(z_n)) - SINK
+		var base := minf(_ground_y(z_s), _ground_y(z_n)) - SINK
 		var block_top: float = stair_y.call(z_s)
 		var bh := block_top - base
 		if i < n - 1 and bh > 0.5:
@@ -190,10 +257,11 @@ func _build_robinson_arch() -> void:
 				var spring := maxf(0.0, bh - r - 0.6)
 				var arch := PsxMesh.arch_block(seg, bh, pier, r * 2.0, spring, 4.0, _b.cell)
 				_b.mesh_with_trimesh(arch, Transform3D(rot, origin), _m.ashlar)
-				# Задняя стенка ниши
+				# Задняя стенка ниши (под проходной аркой её нет — там ход в квартал)
 				var zc_seg := (z_n + z_s) * 0.5
-				_b.box_between(Vector3(x_w + 0.05, base, zc_seg - r), Vector3(x_e - st.niche_depth, base + spring + r, zc_seg + r),
-					_m.ashlar, 4.0, false)
+				if i != st.passage:
+					_b.box_between(Vector3(x_w + 0.05, base, zc_seg - r), Vector3(x_e - st.niche_depth, base + spring + r, zc_seg + r),
+						_m.ashlar, 4.0, false)
 			else:
 				_b.box_between(Vector3(x_w, base, z_n), Vector3(x_e, block_top, z_s), _m.ashlar, 4.0, true)
 		else:
@@ -210,144 +278,60 @@ func _build_robinson_arch() -> void:
 				_m.paving, 4.0, false)
 
 
-## ─── Лавки под арочками и лестницы над ними ──────────────────────────────────
-func _build_shops() -> void:
-	var s: Dictionary = D.SHOP
-	var depth: float = D.STREET.shop_depth
-	var rot := Basis(Vector3.UP, PI * 0.5)
-	for row in D.SHOP_ROWS:
-		var z_s := WorldCoords.gz(row[0])
-		var z_n := WorldCoords.gz(row[1])
-		var count := maxi(1, floori((z_s - z_n) / s.width))
-		var w := (z_s - z_n) / count
-		var mesh := PsxMesh.arch_block(w, s.height, depth, s.span, s.spring, 4.0, _b.cell)
-		for k in count:
-			var zc := z_s - w * (k + 0.5)
-			var base := _street_y(zc) - 0.1
-			_b.mesh_with_trimesh(mesh, Transform3D(rot, Vector3(-depth * 0.5, base, zc)), _m.ashlar)
-			# Прилавок на половину проёма
-			var cx := -depth + 0.2
-			_b.box_between(Vector3(cx, base, zc - s.span * 0.5), Vector3(cx + s.counter_depth, base + 0.1 + s.counter_height, zc),
-				_m.wood, 1.0, true)
-
-	var ss: Dictionary = D.SHOP_STAIR
-	for stair in D.SHOP_STAIRS:
-		var z_a := WorldCoords.gz(stair[0])
-		var z_b := WorldCoords.gz(stair[1])
-		var z_land: float = z_b + ss.landing
-		var top: float = _street_y(z_b) + ss.top_height
-		var roof: float = _street_y(z_a) + s.height - 0.1
-		var count := maxi(1, roundi((top - roof) / D.ROBINSON_STAIR.step_rise))
-		var tread := (z_a - z_land) / count
-		for k in count:
-			var z0 := z_a - tread * (k + 1)
-			var z1 := z_a - tread * k
-			var base: float = _street_y(z1) + s.height - 0.15
-			_b.box_between(Vector3(-ss.width, base, z0), Vector3(0.0, roof + (top - roof) * (k + 1) / count, z1),
-				_m.ashlar, 4.0, false, PsxMesh.FACE_EAST)
-		_b.box_between(Vector3(-ss.width, _street_y(z_b) + s.height - 0.15, z_b), Vector3(0.0, top, z_land),
-			_m.ashlar, 4.0, false, PsxMesh.FACE_EAST)
-		# Дверь в стене над площадкой
-		var zc := (z_b + z_land) * 0.5
-		_b.box_between(Vector3(-0.06, top, zc - 0.6), Vector3(0.0, top + 2.2, zc + 0.6), _m.dark, 1.0, false, PsxMesh.FACE_EAST)
+## ─── Мост Уилсона западнее квартала (над кварталом — опоры V на карте) ─────────
+func _build_wilson_causeway() -> void:
+	var rows := []
+	for r in _quarter.h:
+		if (D.QUARTER_MAP[r] as String).contains("V"):
+			rows.append(r)
+	if rows.is_empty():
+		return
+	var z_n: float = _quarter.z0 + rows[0]
+	var z_s: float = _quarter.z0 + rows[rows.size() - 1] + 1
+	var g := _quarter.ground_at_z(z_s - 0.5)
+	_b.box_between(Vector3(WorldCoords.gx(D.WILSON_ARCH.causeway_x), g - 1.0, z_n), Vector3(_quarter.x0, _wall_top, z_s),
+		_m.ashlar, 4.0, false, PsxMesh.FACE_BOTTOM | PsxMesh.FACE_EAST, 2.0)
 
 
-## ─── Арка Уилсона: мост от платформы на запад ───────────────────────────────
-func _build_wilson_arch() -> void:
-	var a: Dictionary = D.WILSON_ARCH
-	var zc := WorldCoords.gz(a.y)
-	var hw: float = a.width * 0.5
-	var sy := _street_y(zc) - 0.1
-	var span := -_street_west
-	var pier: float = a.pier
-	var height := _wall_top - sy
-	var spring: float = height - span * 0.5 - a.crown
-	var mesh := PsxMesh.arch_block(span + pier * 2.0, height, a.width, span, spring, 4.0, _b.cell)
-	_b.mesh_with_trimesh(mesh, Transform3D(Basis(), Vector3(-span * 0.5, sy, zc)), _m.ashlar)
-	var x_end := WorldCoords.gx(a.causeway_x)
-	_b.box_between(Vector3(x_end, sy - 1.0, zc - hw), Vector3(-span - pier, _wall_top, zc + hw), _m.ashlar, 4.0, false,
-		PsxMesh.FACE_EAST | PsxMesh.FACE_BOTTOM | PsxMesh.FACE_WEST | PsxMesh.FACE_TOP, 2.0)
-	for side in [-1.0, 1.0]:
-		var z: float = zc + side * (hw - 0.2)
-		_b.box_between(Vector3(x_end, _wall_top, z - 0.2), Vector3(0.0, _wall_top + 1.1, z + 0.2), _m.ashlar, 4.0, false)
-
-
-## ─── Жилая застройка ─────────────────────────────────────────────────────────
+## ─── Дома на юге площади и Верхний город фоном ───────────────────────────────
 func _build_houses() -> void:
-	var h: Dictionary = D.HOUSE
-	var prev_n := INF
-	for i in D.HOUSES.size():
-		var e: Array = D.HOUSES[i]
-		var z_s := WorldCoords.gz(e[0])
-		var z_n := WorldCoords.gz(e[1])
-		var front: float = _street_west - e[3]
-		var mat: Material = _m.plaster_a if i % 2 == 0 else _m.plaster_b
-		_house(front - h.depth, front, z_n, z_s, e[2], mat, Vector3.RIGHT, i)
-		# Промежуток с предыдущим домом — короткий тупиковый переулок
-		if z_s < prev_n - 0.1 and prev_n - z_s < 6.0:
-			var x_end: float = _street_west - h.lane_depth
-			_house(_street_west - h.depth, x_end, z_s, prev_n, 8.0, _m.plaster_b, Vector3.RIGHT, i + 50)
-		prev_n = z_n
 	for i in D.PLAZA_HOUSES.size():
 		var e: Array = D.PLAZA_HOUSES[i]
 		_house(WorldCoords.gx(e[0]), WorldCoords.gx(e[1]), WorldCoords.gz(e[3]), WorldCoords.gz(e[2]), e[4],
 			_m.plaster_a if i % 2 else _m.plaster_b, Vector3.FORWARD, i + 100)
-	# Верхний город — дальний фон
 	for i in D.BACKDROP.size():
 		var e: Array = D.BACKDROP[i]
 		var z_s := WorldCoords.gz(e[2])
 		var z_n := WorldCoords.gz(e[3])
-		var base := minf(_street_y(z_s), _street_y(z_n)) - SINK
-		var top: float = _street_y((z_s + z_n) * 0.5) + e[4]
-		_b.box_between(Vector3(WorldCoords.gx(e[0]), base, z_s), Vector3(WorldCoords.gx(e[1]), top, z_n),
-			_m.plaster_b if i % 2 else _m.plaster_a, 4.0, false, PsxMesh.FACE_BOTTOM, 2.0)
+		_b.box_between(Vector3(WorldCoords.gx(e[0]), _plaza_y - SINK, z_s), Vector3(WorldCoords.gx(e[1]), _plaza_y + e[4], z_n),
+			_m.plaster_b if i % 2 else _m.plaster_a, 4.0, false, PsxMesh.FACE_BOTTOM, 4.0)
 
 
-## Дом-коробка с плоской крышей, парапетом, дверью и окнами на фасаде facing (RIGHT — на восток, FORWARD — на север).
-func _house(x0: float, x1: float, z_n: float, z_s: float, height: float, mat: Material, facing: Vector3, seed: int) -> void:
-	var hd: Dictionary = D.HOUSE
-	var zc := (z_n + z_s) * 0.5
-	var base := minf(_street_y(z_s), _street_y(z_n)) - SINK
-	var top: float = _street_y(zc) + height
-	var hidden := PsxMesh.FACE_BOTTOM | PsxMesh.FACE_TOP
-	hidden |= PsxMesh.FACE_WEST if facing == Vector3.RIGHT else PsxMesh.FACE_SOUTH
-	_b.box_between(Vector3(x0, base, z_n), Vector3(x1, top, z_s), mat, 3.0, true, hidden)
-	# Парапет по краю крыши
+## Дом-коробка с плоской крышей, парапетом, закрытой дверью и ставнями на северном фасаде.
+func _house(x0: float, x1: float, z_n: float, z_s: float, height: float, mat: Material, _facing: Vector3, seed: int) -> void:
+	var base := minf(_ground_y(z_s), _ground_y(z_n)) - SINK
+	var top: float = _ground_y((z_n + z_s) * 0.5) + height
+	_b.box_between(Vector3(x0, base, z_n), Vector3(x1, top, z_s), mat, 3.0, true,
+		PsxMesh.FACE_BOTTOM | PsxMesh.FACE_TOP | PsxMesh.FACE_SOUTH)
 	var p := 0.25
-	var ph: float = hd.parapet
-	_b.box_between(Vector3(x0, top, z_n), Vector3(x1, top + ph, z_n + p), mat, 3.0, false, PsxMesh.FACE_BOTTOM)
-	_b.box_between(Vector3(x0, top, z_s - p), Vector3(x1, top + ph, z_s), mat, 3.0, false, PsxMesh.FACE_BOTTOM)
-	_b.box_between(Vector3(x1 - p, top, z_n + p), Vector3(x1, top + ph, z_s - p), mat, 3.0, false, PsxMesh.FACE_BOTTOM)
-	_b.box_between(Vector3(x0, top, z_n + p), Vector3(x0 + p, top + ph, z_s - p), mat, 3.0, false, PsxMesh.FACE_BOTTOM)
-	# Дверь и окна — тёмные проёмы чуть перед фасадом
+	var ph: float = D.QUARTER.parapet
+	_b.box_between(Vector3(x0, top - 0.1, z_n - 0.03), Vector3(x1, top + ph, z_n + p), mat, 3.0, false, PsxMesh.FACE_BOTTOM)
+	_b.box_between(Vector3(x0, top - 0.1, z_n + p), Vector3(x0 + p, top + ph, z_s), mat, 3.0, false, PsxMesh.FACE_BOTTOM)
+	_b.box_between(Vector3(x1 - p, top - 0.1, z_n + p), Vector3(x1, top + ph, z_s), mat, 3.0, false, PsxMesh.FACE_BOTTOM)
+	# Дверь (закрытая створка в проёме) с каменной перемычкой и ставни на окнах
 	var rng := RandomNumberGenerator.new()
 	rng.seed = seed
-	var dw: float = hd.door_width
-	if facing == Vector3.RIGHT:
-		var width := z_s - z_n
-		if width < dw + 1.0:
-			return
-		var dz := rng.randf_range(z_n + dw, z_s - dw)
-		var gy := _street_y(dz)
-		_b.box_between(Vector3(x1, gy - 0.1, dz - dw * 0.5), Vector3(x1 + 0.08, gy + hd.door_height, dz + dw * 0.5),
-			_m.dark, 1.0, false, PsxMesh.FACE_WEST)
-		if height >= 6.0:
-			for k in maxi(1, floori(width / 4.0)):
-				var wz := lerpf(z_n + 1.0, z_s - 1.0, (k + 0.5) / maxi(1, floori(width / 4.0)))
-				var wy := top - 2.2
-				_b.box_between(Vector3(x1, wy, wz - 0.3), Vector3(x1 + 0.08, wy + 0.7, wz + 0.3), _m.dark, 1.0, false, PsxMesh.FACE_WEST)
-	else:
-		var width := x1 - x0
-		var dx := rng.randf_range(x0 + dw, x1 - dw)
-		var gy := _street_y(z_n)
-		_b.box_between(Vector3(dx - dw * 0.5, gy - 0.1, z_n - 0.08), Vector3(dx + dw * 0.5, gy + hd.door_height, z_n),
-			_m.dark, 1.0, false, PsxMesh.FACE_SOUTH)
-		if height >= 6.0:
-			var n := maxi(1, floori(width / 4.0))
-			for k in n:
-				var wx := lerpf(x0 + 1.0, x1 - 1.0, (k + 0.5) / n)
-				var wy := top - 2.2
-				_b.box_between(Vector3(wx - 0.3, wy, z_n - 0.08), Vector3(wx + 0.3, wy + 0.7, z_n), _m.dark, 1.0, false, PsxMesh.FACE_SOUTH)
+	var gy := _ground_y(z_n)
+	var dh: float = D.QUARTER.door_height
+	var dx := rng.randf_range(x0 + 1.5, x1 - 1.5)
+	_b.box_between(Vector3(dx - 0.48, gy, z_n - 0.06), Vector3(dx + 0.48, gy + dh, z_n), _m.door, 1.0, false, PsxMesh.FACE_SOUTH)
+	_b.box_between(Vector3(dx - 0.75, gy + dh, z_n - 0.1), Vector3(dx + 0.75, gy + dh + 0.3, z_n), _m.lintel, 1.0, false, PsxMesh.FACE_SOUTH)
+	if height >= 6.0:
+		var n := maxi(1, floori((x1 - x0) / 4.0))
+		for k in n:
+			var wx := lerpf(x0 + 1.0, x1 - 1.0, (k + 0.5) / n)
+			var wy := top - 2.4
+			_b.box_between(Vector3(wx - 0.35, wy, z_n - 0.07), Vector3(wx + 0.35, wy + 0.8, z_n), _m.wood, 1.0, false, PsxMesh.FACE_SOUTH)
 
 
 ## ─── Стройка: леса и кучи камня ──────────────────────────────────────────────
@@ -355,7 +339,7 @@ func _build_construction() -> void:
 	for e in D.SCAFFOLDS:
 		var x := WorldCoords.gx(e[0])
 		var z := WorldCoords.gz(e[1])
-		_scaffold(Vector3(x, _street_y(z), z), Vector3(e[2], e[3], e[4]))
+		_scaffold(Vector3(x, _ground_y(z), z), Vector3(e[2], e[3], e[4]))
 	for e in D.STONE_PILES:
 		var x := WorldCoords.gx(e[0])
 		var z := WorldCoords.gz(e[1])
@@ -403,7 +387,7 @@ func _stone_pile(center: Vector3, size: float, seed: int) -> void:
 	var rng := RandomNumberGenerator.new()
 	rng.seed = seed
 	var counts := [5, 3, 1]
-	var y := _street_y(center.z) - 0.05
+	var y := _ground_y(center.z) - 0.05
 	var radius := size * 0.4
 	for layer in counts.size():
 		var lowest := INF
@@ -426,11 +410,11 @@ func _build_antonia() -> void:
 	var x1 := WorldCoords.gx(a.x_to)
 	var z_s := WorldCoords.gz(a.y_from)
 	var z_n := WorldCoords.gz(a.y_to)
-	var sy := _street_y(z_s)
+	var sy := _ground_y(z_s)
 	var rock_top: float = sy + a.rock
 	# Скала, облицованная гладкими плитами
 	_b.box_between(Vector3(x0, sy - 2.0, z_s), Vector3(x1, rock_top, z_n), _m.slab, 4.0, true,
-		PsxMesh.FACE_BOTTOM | PsxMesh.FACE_TOP | PsxMesh.FACE_EAST | PsxMesh.FACE_NORTH)
+		PsxMesh.FACE_BOTTOM | PsxMesh.FACE_TOP | PsxMesh.FACE_EAST | PsxMesh.FACE_NORTH, 2.0)
 	# Низкая стенка по краю скалы
 	var lw: float = a.low_wall
 	_b.box_between(Vector3(x0, rock_top, z_s - 0.4), Vector3(x1, rock_top + lw, z_s), _m.ashlar, 4.0, false, PsxMesh.FACE_BOTTOM)
@@ -458,7 +442,7 @@ func _build_antonia() -> void:
 	# Стена поперёк улицы с воротами
 	var g: Dictionary = D.ANTONIA_GATE
 	var zg := WorldCoords.gz(g.y)
-	var gy := _street_y(zg) - 0.2
+	var gy := _ground_y(zg) - 0.2
 	var ht: float = g.thickness * 0.5
 	var gx := WorldCoords.gx(g.x)
 	var pier := 2.5
@@ -508,13 +492,13 @@ func _build_bounds() -> void:
 		var b := WorldCoords.point(e[2], e[3])
 		var d := b - a
 		var center := (a + b) * 0.5
-		center.y = _street_y(center.z) + 10.0
+		center.y = _ground_y(center.z) + 10.0
 		_b.collision_box(Transform3D(Basis(Vector3.UP, atan2(-d.z, d.x)), center), Vector3(d.length() + 1.0, 40.0, 1.0))
 
 
 func _place_player() -> void:
 	var z := WorldCoords.gz(D.SPAWN.y)
-	_player.position = Vector3(WorldCoords.gx(D.SPAWN.x), _street_y(z) + 0.05, z)
+	_player.position = Vector3(WorldCoords.gx(D.SPAWN.x), _ground_y(z) + 0.05, z)
 	_player.rotation.y = deg_to_rad(D.SPAWN_YAW)
 
 
