@@ -2,6 +2,7 @@ extends Node3D
 ## Тестовый коридор этапа 1: 45 м, колонны через каждые 5 м, ящики с шашечкой —
 ## видно дрожание вершин, плывущие текстуры и как дальние колонны растворяются в тумане.
 ## Отладка (флаг tma/debug/keys): 1 — белый свет за спиной героя, чтобы увидеть тень тела.
+## Тени есть только у него (и будут у ангела); у светильника тени выключены.
 
 ## Ширина, высота, длина коридора, м.
 const ROOM := Vector3(6.0, 5.0, 45.0)
@@ -66,6 +67,8 @@ func _unhandled_input(event: InputEvent) -> void:
 			_test_light.light_energy = 2.0
 			_test_light.omni_range = 25.0
 			_test_light.shadow_enabled = true
+			_test_light.shadow_bias = 0.05
+			_test_light.shadow_normal_bias = 1.0
 			add_child(_test_light)
 
 
