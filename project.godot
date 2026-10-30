@@ -11,7 +11,7 @@ config_version=5
 [application]
 
 config/name="Тьма по всей земле"
-run/main_scene="res://scenes/main.tscn"
+run/main_scene="res://scenes/levels/test_room.tscn"
 config/features=PackedStringArray("4.7", "GL Compatibility")
 
 [autoload]
@@ -122,6 +122,17 @@ debug_5={
 renderer/rendering_method="gl_compatibility"
 renderer/rendering_method.mobile="gl_compatibility"
 textures/canvas_textures/default_texture_filter=0
+
+[shader_globals]
+
+psx_snap_pixels={
+"type": "float",
+"value": 1.0
+}
+psx_affine={
+"type": "float",
+"value": 1.0
+}
 
 [tma]
 

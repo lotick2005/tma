@@ -313,7 +313,15 @@ A площадь у арки Робинсона → северная улица 
   - Флаг `tma/debug/keys = true`.
   - Autoload `GameState` (`scripts/game_state.gd`): текущий уровень, чекпойнт, прочитанные записки, сюжетные флаги, ключ. Только данные.
   - `main.tscn`: пустой Node3D + надпись «ТЬМА ПО ВСЕЙ ЗЕМЛЕ — этап 0».
-- [ ] Этап 1 — персонаж и PS1-рендер
+- [x] Этап 1 — персонаж и PS1-рендер
+  - Игрок `scenes/actors/player.tscn` (`scripts/player.gd`): обзор мышью, ходьба / бег с выносливостью / присед (C — переключатель, `crouch_toggle`), без прыжка, покачивание камеры. Сигнал `move_mode_changed(STAND / CROUCH / WALK / RUN)` — для шума на этапе 5. Все скорости — @export.
+  - Светильник: лоуполи CSG-модель + тёплый OmniLight3D с тенями и мерцанием (`scripts/oil_lamp.gd`, параметры — @export на узле OilLamp).
+  - «Кликни, чтобы начать» (`scenes/ui/click_to_start.tscn`): до клика игра на паузе; Esc отпускает курсор, клик возвращает. Сигнал `started` — сюда подключить звук на этапе 3.
+  - PS1-шейдер `shaders/psx_lit.gdshader`: дрожание вершин и аффинные текстуры, сила — глобальные параметры шейдеров `psx_snap_pixels` (0 — выкл, 1 — как на PS1) и `psx_affine` (0…1) в Настройках проекта → Shader Globals. Материалы делает `PsxMaterial.make()`.
+  - Пост-эффект `scenes/ui/psx_post.tscn` (`shaders/psx_post.gdshader`): дизеринг Байера 4×4 + 5 бит на канал (`color_bits`, `dither_strength`).
+  - Меши для блокаута — `PsxMesh.box()` / `PsxMesh.column()`: UV в метрах, грани порезаны на ячейки ~1 м. Текстуры — `ProcTextures.checker()`.
+  - Туман — depth fog в Environment сцены (`fog_depth_begin/end`, `fog_density` = максимум, `fog_light_color`).
+  - Главная сцена на время теста — `scenes/levels/test_room.tscn` (`main.tscn` пока не используется).
 - [ ] Этап 2 — блокаут уровня 1
 - [ ] Этап 3 — звуковая система
 - [ ] Этап 4 — вступление
