@@ -12,3 +12,5 @@ var read_notes: Array[String] = []
 var story_flags: Dictionary = {}
 ## Есть ли у героя ключ от калитки южных ворот (уровень 2, Антония).
 var has_key: bool = false
+## Светильник в руке (true) или убран (false). Клавиша F, см. scripts/hero_arms.gd.
+var lamp_out: bool = true
