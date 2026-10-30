@@ -5,6 +5,7 @@
 [ext_resource type="PackedScene" path="res://scenes/ui/psx_post.tscn" id="3_post"]
 [ext_resource type="PackedScene" path="res://scenes/ui/click_to_start.tscn" id="4_cts"]
 [ext_resource type="PackedScene" path="res://scenes/ui/debug_panel.tscn" id="5_debug"]
+[ext_resource type="Script" path="res://scripts/debug_light.gd" id="6_dlight"]
 
 [sub_resource type="Environment" id="Environment_dark"]
 background_mode = 1
@@ -27,3 +28,6 @@ transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0, 2.5)
 [node name="ClickToStart" parent="." instance=ExtResource("4_cts")]
 
 [node name="DebugPanel" parent="." instance=ExtResource("5_debug")]
+
+[node name="DebugLight" type="Node" parent="."]
+script = ExtResource("6_dlight")

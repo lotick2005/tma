@@ -1,7 +1,7 @@
 extends Node3D
 ## Тестовый коридор этапа 1: 45 м, колонны через каждые 5 м, ящики с шашечкой —
 ## видно дрожание вершин, плывущие текстуры и как дальние колонны растворяются в тумане.
-## Отладка (флаг tma/debug/keys): 1 — белый свет за спиной героя, чтобы увидеть тень тела.
+## Отладка (флаг tma/debug/keys): 1 — белый свет за спиной героя (узел DebugLight, scripts/debug_light.gd).
 ## Тени есть только у него (и будут у ангела); у светильника тени выключены.
 
 ## Ширина, высота, длина коридора, м.
@@ -22,10 +22,6 @@ const CRATES := [
 	[Vector3(-0.8, 0.0, -17.0), Vector3(1.5, 1.5, 1.5)],
 	[Vector3(1.4, 0.0, -26.0), Vector3(1.0, 1.2, 2.5)],
 ]
-
-var _test_light: OmniLight3D
-
-@onready var _player: Node3D = $Player
 
 
 func _ready() -> void:
@@ -54,28 +50,6 @@ func _ready() -> void:
 		for x in [-COLUMN_X, COLUMN_X]:
 			_add_column(Vector3(x, 0.0, z), COLUMN_RADIUS, h, marble)
 		z -= COLUMN_STEP
-
-
-func _unhandled_input(event: InputEvent) -> void:
-	if ProjectSettings.get_setting("tma/debug/keys", false) and event.is_action_pressed("debug_1"):
-		if _test_light:
-			_test_light.queue_free()
-			_test_light = null
-		else:
-			_test_light = OmniLight3D.new()
-			_test_light.light_color = Color(0.85, 0.9, 1.0)
-			_test_light.light_energy = 2.0
-			_test_light.omni_range = 25.0
-			_test_light.shadow_enabled = true
-			_test_light.shadow_bias = 0.05
-			_test_light.shadow_normal_bias = 1.0
-			add_child(_test_light)
-
-
-func _process(_delta: float) -> void:
-	if _test_light:
-		# За спиной и чуть выше головы — как будет светить ангел
-		_test_light.global_position = _player.global_position + _player.global_basis.z * 2.5 + Vector3.UP * 2.2
 
 
 ## Ящик по центру основания.

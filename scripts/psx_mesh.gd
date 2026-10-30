@@ -6,8 +6,17 @@ extends RefCounted
 ## на больших треугольниках аффинные текстуры плывут слишком сильно (на PS1 делали так же).
 
 
-## Ящик с центром в начале координат.
-static func box(size: Vector3, tile: float = 1.0, cell: float = 1.0) -> ArrayMesh:
+## Грани ящика для skip_faces в box(): невидимые грани (внутри стены, в земле) можно не строить.
+const FACE_SOUTH := 1  # +Z
+const FACE_NORTH := 2  # −Z
+const FACE_EAST := 4  # +X
+const FACE_WEST := 8  # −X
+const FACE_TOP := 16
+const FACE_BOTTOM := 32
+
+
+## Ящик с центром в начале координат. skip_faces — сумма FACE_*, эти грани не строятся.
+static func box(size: Vector3, tile: float = 1.0, cell: float = 1.0, skip_faces: int = 0) -> ArrayMesh:
 	var st := SurfaceTool.new()
 	st.begin(Mesh.PRIMITIVE_TRIANGLES)
 	var h := size * 0.5
@@ -20,7 +29,10 @@ static func box(size: Vector3, tile: float = 1.0, cell: float = 1.0) -> ArrayMes
 		[Vector3.UP, Vector3.RIGHT, Vector3.FORWARD],
 		[Vector3.DOWN, Vector3.RIGHT, Vector3.BACK],
 	]
-	for f in faces:
+	for fi in faces.size():
+		if skip_faces & (1 << fi):
+			continue
+		var f: Array = faces[fi]
 		var n: Vector3 = f[0]
 		var u: Vector3 = f[1]
 		var v: Vector3 = f[2]
@@ -135,6 +147,125 @@ static func lathe(profile: PackedVector2Array, sides: int, tile: float = 1.0) ->
 			var n2 := Vector2(p1.y - p0.y, -(p1.x - p0.x))
 			_quad(st, q, mid * n2.x + Vector3.UP * n2.y, tile)
 	return st.commit()
+
+
+## Блок с арочным проёмом насквозь: ширина по X (центр в 0), глубина по Z (центр в 0), высота по Y от 0.
+## Проём шириной span по центру: прямые стенки до высоты spring, сверху полукруг. Нужно
+## height > spring + span / 2. Арки Робинсона и Уилсона, лавки под арочками, ворота.
+## Все общие рёбра граней делятся одинаково (без Т-стыков): иначе из-за дрожания вершин
+## на швах мелькают щели, сквозь которые видно небо.
+static func arch_block(width: float, height: float, depth: float, span: float, spring: float,
+		tile: float = 1.0, cell: float = 1.0) -> ArrayMesh:
+	var st := SurfaceTool.new()
+	st.begin(Mesh.PRIMITIVE_TRIANGLES)
+	var hw := width * 0.5
+	var hd := depth * 0.5
+	var r := span * 0.5
+	# Кусок дуги и кусок верхнего края над ним — не длиннее cell
+	var segments := maxi(6, maxi(ceili(PI * r / cell), ceili(width / cell)))
+	var arc: Array[Vector2] = []
+	var top: Array[Vector2] = []
+	var nv_up := ceili((height - spring) / cell)
+	for i in segments + 1:
+		var a := PI * i / segments
+		arc.append(Vector2(-r * cos(a), spring + r * sin(a)))
+		top.append(Vector2(lerpf(-hw, hw, float(i) / segments), height))
+		nv_up = maxi(nv_up, ceili(arc[i].distance_to(top[i]) / cell))
+	var nu_pier := maxi(1, ceili((hw - r) / cell))
+	var nv_pier := maxi(1, ceili(spring / cell))
+	var nd := maxi(1, ceili(depth / cell))
+	for side in [1.0, -1.0]:
+		var z: float = hd * side
+		var out := Vector3(0.0, 0.0, side)
+		var p := func(v: Vector2) -> Vector3: return Vector3(v.x, v.y, z)
+		# Опоры по бокам проёма
+		_quad_grid(st, [p.call(Vector2(-hw, 0.0)), p.call(Vector2(-r, 0.0)), p.call(Vector2(-r, spring)), p.call(Vector2(-hw, spring))],
+			out, tile, cell, nu_pier, nv_pier)
+		_quad_grid(st, [p.call(Vector2(r, 0.0)), p.call(Vector2(hw, 0.0)), p.call(Vector2(hw, spring)), p.call(Vector2(r, spring))],
+			out, tile, cell, nu_pier, nv_pier)
+		# Над проёмом: полосы от дуги к верхнему краю и треугольники по углам
+		_quad_grid(st, [p.call(Vector2(-hw, spring)), p.call(arc[0]), p.call(top[0]), p.call(top[0])], out, tile, cell, nu_pier, nv_up)
+		_quad_grid(st, [p.call(arc[segments]), p.call(Vector2(hw, spring)), p.call(top[segments]), p.call(top[segments])],
+			out, tile, cell, nu_pier, nv_up)
+		for i in segments:
+			_quad_grid(st, [p.call(arc[i]), p.call(arc[i + 1]), p.call(top[i + 1]), p.call(top[i])], out, tile, cell, 1, nv_up)
+	# Стенки проёма и свод
+	_quad_grid(st, [Vector3(-r, 0.0, -hd), Vector3(-r, 0.0, hd), Vector3(-r, spring, hd), Vector3(-r, spring, -hd)],
+		Vector3.RIGHT, tile, cell, nd, nv_pier)
+	_quad_grid(st, [Vector3(r, 0.0, -hd), Vector3(r, 0.0, hd), Vector3(r, spring, hd), Vector3(r, spring, -hd)],
+		Vector3.LEFT, tile, cell, nd, nv_pier)
+	for i in segments:
+		var a0 := arc[i]
+		var a1 := arc[i + 1]
+		var mid := (a0 + a1) * 0.5
+		var inward := Vector3(-mid.x, spring - mid.y, 0.0)
+		_quad_grid(st, [Vector3(a0.x, a0.y, -hd), Vector3(a1.x, a1.y, -hd), Vector3(a1.x, a1.y, hd), Vector3(a0.x, a0.y, hd)],
+			inward, tile, cell, 1, nd)
+	# Верх и наружные бока (бока — двумя частями, как опоры и надпроёмная часть спереди)
+	_quad_grid(st, [Vector3(-hw, height, -hd), Vector3(hw, height, -hd), Vector3(hw, height, hd), Vector3(-hw, height, hd)],
+		Vector3.UP, tile, cell, segments, nd)
+	for sx in [-1.0, 1.0]:
+		var x: float = hw * sx
+		var out := Vector3(sx, 0.0, 0.0)
+		_quad_grid(st, [Vector3(x, 0.0, -hd), Vector3(x, 0.0, hd), Vector3(x, spring, hd), Vector3(x, spring, -hd)], out, tile, cell, nd, nv_pier)
+		_quad_grid(st, [Vector3(x, spring, -hd), Vector3(x, spring, hd), Vector3(x, height, hd), Vector3(x, height, -hd)], out, tile, cell, nd, nv_up)
+	return st.commit()
+
+
+## Рельеф: сетка от x0 до x1 и от z0 до z1, высота точки — height_at.call(x, z).
+## Линии сетки — на кратных cell мировых координатах, поэтому соседние куски рельефа делят
+## общий край одинаково (без щелей). UV — мировые x, z / tile, текстура стыкуется.
+static func terrain(x0: float, x1: float, z0: float, z1: float, height_at: Callable, tile: float = 1.0, cell: float = 1.0) -> ArrayMesh:
+	var st := SurfaceTool.new()
+	st.begin(Mesh.PRIMITIVE_TRIANGLES)
+	var xs := _grid_lines(x0, x1, cell)
+	var zs := _grid_lines(z0, z1, cell)
+	for i in xs.size() - 1:
+		for j in zs.size() - 1:
+			var q := []
+			for c in [[i, j], [i + 1, j], [i + 1, j + 1], [i, j + 1]]:
+				var x: float = xs[c[0]]
+				var z: float = zs[c[1]]
+				q.append(Vector3(x, height_at.call(x, z), z))
+			_quad(st, q, Vector3.UP, tile)
+	return st.commit()
+
+
+## Концы отрезка a..b и все кратные step между ними, по порядку от a к b.
+static func _grid_lines(a: float, b: float, step: float) -> PackedFloat32Array:
+	var lo := minf(a, b)
+	var hi := maxf(a, b)
+	var out := PackedFloat32Array([lo])
+	var v := (floorf(lo / step) + 1.0) * step
+	while v < hi - 0.001:
+		if v > lo + 0.001:
+			out.append(v)
+		v += step
+	out.append(hi)
+	if a > b:
+		out.reverse()
+	return out
+
+
+## Четырёхугольник, порезанный на ячейки не больше cell (билинейно по углам q[0..3]).
+## nu, nv > 0 — задать число ячеек вдоль q0→q1 и q0→q3 явно (чтобы общее ребро соседних граней делилось одинаково).
+static func _quad_grid(st: SurfaceTool, q: Array, outward: Vector3, tile: float, cell: float, nu: int = 0, nv: int = 0) -> void:
+	var a: Vector3 = q[0]
+	var b: Vector3 = q[1]
+	var c: Vector3 = q[2]
+	var d: Vector3 = q[3]
+	if nu <= 0:
+		nu = maxi(1, ceili(maxf(a.distance_to(b), d.distance_to(c)) / cell))
+	if nv <= 0:
+		nv = maxi(1, ceili(maxf(a.distance_to(d), b.distance_to(c)) / cell))
+	var at := func(u: float, v: float) -> Vector3: return a.lerp(b, u).lerp(d.lerp(c, u), v)
+	for i in nu:
+		for j in nv:
+			var u0 := float(i) / nu
+			var u1 := float(i + 1) / nu
+			var v0 := float(j) / nv
+			var v1 := float(j + 1) / nv
+			_quad(st, [at.call(u0, v0), at.call(u1, v0), at.call(u1, v1), at.call(u0, v1)], outward, tile)
 
 
 ## Плоский четырёхугольник q[0..3] по контуру; outward — куда смотрит лицевая сторона.

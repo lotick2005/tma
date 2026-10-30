@@ -1,0 +1,19 @@
+[gd_resource type="Resource" script_class="LightingPreset" format=3]
+
+[ext_resource type="Script" path="res://scripts/lighting_preset.gd" id="1_preset"]
+
+[resource]
+script = ExtResource("1_preset")
+sun_enabled = true
+sun_color = Color(1, 0.92, 0.78, 1)
+sun_energy = 0.85
+sun_pitch = -40.0
+sun_azimuth = 60.0
+sun_shadows = false
+ambient_color = Color(0.82, 0.8, 0.8, 1)
+ambient_energy = 0.62
+fog_color = Color(0.84, 0.82, 0.76, 1)
+fog_start = 15.0
+fog_end = 140.0
+light_max = 0.95
+camera_far = 150.0
