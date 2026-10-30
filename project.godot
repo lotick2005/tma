@@ -127,6 +127,8 @@ debug_5={
 renderer/rendering_method="gl_compatibility"
 renderer/rendering_method.mobile="gl_compatibility"
 textures/canvas_textures/default_texture_filter=0
+lights_and_shadows/positional_shadow/soft_shadow_filter_quality=0
+lights_and_shadows/positional_shadow/soft_shadow_filter_quality.mobile=0
 
 [shader_globals]
 
@@ -153,6 +155,10 @@ psx_fog_start={
 psx_fog_end={
 "type": "float",
 "value": 28.0
+}
+psx_light_max={
+"type": "float",
+"value": 0.9
 }
 
 [tma]

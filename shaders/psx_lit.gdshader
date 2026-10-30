@@ -3,9 +3,10 @@
 //   psx_snap_pixels — шаг сетки привязки вершин в пикселях внутреннего разрешения (0 — выкл, 1 — как на PS1);
 //   psx_affine      — 0 — правильная перспектива, 1 — текстуры полностью аффинные (плывут);
 //   psx_affine_near — ближе этого расстояния (м) аффинность плавно гаснет, чтобы вплотную у стены не было каши;
-//   psx_fog_color, psx_fog_start, psx_fog_end — цвет тумана и где он начинается и где закрывает всё (м).
+//   psx_fog_color, psx_fog_start, psx_fog_end — цвет тумана и где он начинается и где закрывает всё (м);
+//   psx_light_max   — сколько максимум даёт один источник света: вплотную к огню нет белого пятна.
 shader_type spatial;
-render_mode diffuse_lambert, specular_disabled;
+render_mode specular_disabled;
 
 global uniform float psx_snap_pixels;
 global uniform float psx_affine;
@@ -13,6 +14,7 @@ global uniform float psx_affine_near;
 global uniform vec4 psx_fog_color;
 global uniform float psx_fog_start;
 global uniform float psx_fog_end;
+global uniform float psx_light_max;
 
 uniform sampler2D albedo_texture : source_color, filter_nearest, repeat_enable, hint_default_white;
 uniform vec4 albedo_color : source_color = vec4(1.0);
@@ -49,4 +51,13 @@ void fragment() {
 	ALBEDO = albedo * (1.0 - fog_k);
 	float shade = 0.3 + 0.7 * clamp(NORMAL.y * 0.5 + 0.5, 0.0, 1.0);
 	EMISSION = mix(albedo * self_illum * shade, psx_fog_color.rgb, fog_k);
+}
+
+// Ламберт, но вклад одного источника ограничен psx_light_max. Ограничиваем всю тройку RGB
+// одним множителем, чтобы тёплый свет вблизи не выгорал в белый.
+void light() {
+	float ndl = clamp(dot(NORMAL, LIGHT), 0.0, 1.0);
+	vec3 c = LIGHT_COLOR / PI * ATTENUATION * ndl;
+	float m = max(c.r, max(c.g, c.b));
+	DIFFUSE_LIGHT += c * min(1.0, psx_light_max / max(m, 0.0001));
 }

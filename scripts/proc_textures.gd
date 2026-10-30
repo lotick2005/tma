@@ -83,3 +83,12 @@ static func flame(w: int, h: int) -> ImageTexture:
 			var c := Color(1.0, 0.95, 0.75) if k < 0.4 and t < 0.6 else (Color(1.0, 0.75, 0.25) if k < 0.75 else Color(0.95, 0.4, 0.1))
 			img.set_pixel(x, y, c)
 	return ImageTexture.create_from_image(img)
+
+
+## Ткань с тёмной каймой внизу (последние hem строк): подол и рукава туники.
+static func hemmed_cloth(size: int, base: Color, hem: int, seed: int = 1) -> ImageTexture:
+	var img := mottled(size, base, 0.035, 0.08, seed).get_image()
+	for y in range(size - hem, size):
+		for x in size:
+			img.set_pixel(x, y, img.get_pixel(x, y).darkened(0.35))
+	return ImageTexture.create_from_image(img)
