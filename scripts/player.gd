@@ -15,6 +15,8 @@ const VIEW_LAYER := 3
 
 ## Сменился режим движения: стоит / присел / идёт / бежит. Нужен для шума (этап 5).
 signal move_mode_changed(mode: MoveMode)
+## Нога встала на землю (в нижней точке покачивания) — для звука шагов (HeroAudio).
+signal footstep(mode: MoveMode)
 
 @export_group("Скорость")
 @export var walk_speed := 2.2
@@ -74,6 +76,7 @@ var _gravity: float = ProjectSettings.get_setting("physics/3d/default_gravity")
 
 
 func _ready() -> void:
+	add_to_group("player")
 	stamina = stamina_max
 	# Своя копия формы, чтобы присед не менял общий ресурс сцены
 	_collision.shape = CapsuleShape3D.new()
@@ -151,7 +154,11 @@ func _update_bob(delta: float, moving: bool) -> void:
 	var offset := Vector3.ZERO
 	if moving and is_on_floor():
 		var dist := Vector2(velocity.x, velocity.z).length() * delta
+		var was_half := _step_half(_bob_phase)
 		_bob_phase = fmod(_bob_phase + dist / bob_step_length * PI, TAU)
+		# Нижняя точка покачивания (фаза π/2 и 3π/2) — нога встала
+		if _step_half(_bob_phase) != was_half:
+			footstep.emit(move_mode)
 		var amount := bob_amount
 		if move_mode == MoveMode.RUN:
 			amount *= bob_run_scale
@@ -160,6 +167,11 @@ func _update_bob(delta: float, moving: bool) -> void:
 		# Вниз на каждом шаге, вбок — раз в два шага
 		offset = Vector3(sin(_bob_phase) * amount * 0.5, (cos(_bob_phase * 2.0) - 1.0) * 0.5 * amount, 0.0)
 	_camera.position = _camera.position.lerp(offset, 1.0 - exp(-12.0 * delta))
+
+
+## Половина цикла шага: 0 — между π/2 и 3π/2, 1 — остальное. Смена половины — шаг.
+func _step_half(phase: float) -> int:
+	return 0 if phase >= PI * 0.5 and phase < PI * 1.5 else 1
 
 
 func _set_crouched(value: bool) -> void:

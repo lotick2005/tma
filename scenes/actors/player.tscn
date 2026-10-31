@@ -4,6 +4,7 @@
 [ext_resource type="Script" path="res://scripts/oil_lamp.gd" id="2_lamp"]
 [ext_resource type="Script" path="res://scripts/hero_arms.gd" id="3_arms"]
 [ext_resource type="Script" path="res://scripts/hero_body.gd" id="4_body"]
+[ext_resource type="Script" path="res://scripts/hero_audio.gd" id="5_audio"]
 
 [sub_resource type="CapsuleShape3D" id="CapsuleShape3D_body"]
 radius = 0.35
@@ -40,3 +41,6 @@ far = 60.0
 
 [node name="Arms" type="Node3D" parent="Head/Camera3D"]
 script = ExtResource("3_arms")
+
+[node name="Audio" type="Node" parent="."]
+script = ExtResource("5_audio")

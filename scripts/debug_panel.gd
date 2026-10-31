@@ -6,6 +6,8 @@ extends CanvasLayer
 ## Если уровень умеет (toggle_day) — кнопка «день / тьма».
 ## Переключатель «Подписи предметов»: по центру экрана — имя (kind) предмета под прицелом, луч из камеры до LABEL_RANGE м
 ## (PropRegistry). По этим именам удобно называть предметы в отзывах. Работает и с закрытой панелью.
+## Страница «Звук»: ползунок «Угроза» (ThreatDirector.manual_threat), громкость шин, «ложная тревога сейчас»,
+## «заглушить фон», «показать звуковые зоны и источники».
 
 const FONT_SIZE := 8
 ## Дальность луча подписей предметов, м.
@@ -21,6 +23,8 @@ var _body: HeroBody
 var _panel: PanelContainer
 var _out: LineEdit
 var _labels_on := false
+## Открыта страница «Звук» (иначе «Картинка»).
+var _sound_page := false
 var _pick_label: Label
 
 
@@ -102,47 +106,39 @@ func _build() -> void:
 	var box := VBoxContainer.new()
 	box.add_theme_constant_override("separation", 2)
 	_panel.add_child(box)
+	var head := HBoxContainer.new()
+	box.add_child(head)
 	var title := Label.new()
-	title.text = "Отладка картинки — 0: закрыть"
-	box.add_child(title)
+	title.text = "Отладка — 0: закрыть"
+	head.add_child(title)
+	var pic_btn := Button.new()
+	pic_btn.text = "Картинка"
+	head.add_child(pic_btn)
+	var snd_btn := Button.new()
+	snd_btn.text = "Звук"
+	head.add_child(snd_btn)
 
-	var grid := GridContainer.new()
-	grid.columns = 2
-	grid.add_theme_constant_override("h_separation", 6)
-	grid.add_theme_constant_override("v_separation", 0)
-	box.add_child(grid)
+	var pic := VBoxContainer.new()
+	pic.add_theme_constant_override("separation", 2)
+	box.add_child(pic)
+	var snd := VBoxContainer.new()
+	snd.add_theme_constant_override("separation", 2)
+	box.add_child(snd)
+	var show_page := func(sound: bool) -> void:
+		_sound_page = sound
+		pic.visible = not sound
+		snd.visible = sound
+	pic_btn.pressed.connect(show_page.bind(false))
+	snd_btn.pressed.connect(show_page.bind(true))
+
+	# ─── Картинка ───
+	var grid := _make_grid(pic)
 	for p in _params():
-		var key: String = p[0]
-		_values[key] = float(p[5])
-		var row := HBoxContainer.new()
-		row.size_flags_horizontal = Control.SIZE_EXPAND_FILL
-		var name_label := Label.new()
-		name_label.text = p[1]
-		name_label.custom_minimum_size.x = 44
-		row.add_child(name_label)
-		var slider := HSlider.new()
-		slider.min_value = p[2]
-		slider.max_value = p[3]
-		slider.step = p[4]
-		slider.value = _values[key]
-		slider.size_flags_horizontal = Control.SIZE_EXPAND_FILL
-		slider.size_flags_vertical = Control.SIZE_SHRINK_CENTER
-		row.add_child(slider)
-		var value_label := Label.new()
-		value_label.custom_minimum_size.x = 22
-		value_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_RIGHT
-		row.add_child(value_label)
-		_value_labels[key] = value_label
-		var apply: Callable = p[6]
-		slider.value_changed.connect(func(v: float) -> void:
-			_values[key] = v
-			apply.call(v)
-			_refresh())
-		grid.add_child(row)
+		_add_slider(grid, p)
 
 	if _level and _level.has_method("toggle_day"):
 		var row := HBoxContainer.new()
-		box.add_child(row)
+		pic.add_child(row)
 		var day_btn := Button.new()
 		day_btn.text = "Сейчас: " + ("день" if _level.is_day() else "тьма") + " — переключить"
 		day_btn.pressed.connect(func() -> void:
@@ -154,7 +150,32 @@ func _build() -> void:
 	labels_btn.text = "Подписи предметов (имя под прицелом)"
 	labels_btn.button_pressed = _labels_on
 	labels_btn.toggled.connect(func(on: bool) -> void: _labels_on = on)
-	box.add_child(labels_btn)
+	pic.add_child(labels_btn)
+
+	# ─── Звук ───
+	var sgrid := _make_grid(snd)
+	for p in _sound_params():
+		_add_slider(sgrid, p)
+	var row2 := HBoxContainer.new()
+	snd.add_child(row2)
+	var alarm_btn := Button.new()
+	alarm_btn.text = "Ложная тревога сейчас"
+	alarm_btn.pressed.connect(func() -> void:
+		alarm_btn.text = "Ложная тревога сейчас" + ("" if AudioManager.trigger_false_alarm(true) else " (нет места)"))
+	row2.add_child(alarm_btn)
+	var mute_btn := Button.new()
+	mute_btn.text = "Фон: заглушить / вернуть (2)"
+	mute_btn.pressed.connect(func() -> void: AudioManager.set_ambience_muted(not AudioManager.is_ambience_muted()))
+	row2.add_child(mute_btn)
+	var zones_btn := CheckButton.new()
+	zones_btn.text = "Показать звуковые зоны и источники"
+	zones_btn.button_pressed = AudioManager.debug_visible
+	zones_btn.toggled.connect(func(on: bool) -> void: AudioManager.set_debug_visible(on))
+	snd.add_child(zones_btn)
+	var legend := Label.new()
+	legend.text = "Зоны: синий — комната, лиловый — подвал, жёлтый — переулок, зелёный — площадка.\nШарик — источник: зелёный слышно напрямую, красный — за стеной."
+	snd.add_child(legend)
+	show_page.call(_sound_page)
 
 	var hint := Label.new()
 	hint.text = "Строка значений (выдели или нажми «Копировать»):"
@@ -168,6 +189,57 @@ func _build() -> void:
 	copy.pressed.connect(func() -> void: DisplayServer.clipboard_set(_out.text))
 	box.add_child(copy)
 	_refresh()
+
+
+func _make_grid(parent: Control) -> GridContainer:
+	var grid := GridContainer.new()
+	grid.columns = 2
+	grid.add_theme_constant_override("h_separation", 6)
+	grid.add_theme_constant_override("v_separation", 0)
+	parent.add_child(grid)
+	return grid
+
+
+## Звук: угроза (пока нет врагов — отсюда) и громкость шин.
+func _sound_params() -> Array:
+	var params := [
+		["threat", "Угроза", 0.0, 1.0, 0.01, ThreatDirector.manual_threat,
+			func(v: float) -> void: ThreatDirector.manual_threat = v],
+	]
+	for bus in AudioManager.BUSES:
+		params.append(["bus_" + bus.to_lower(), bus, -40.0, 6.0, 0.5, AudioManager.get_bus_volume(bus),
+			func(v: float) -> void: AudioManager.set_bus_volume(bus, v)])
+	return params
+
+
+func _add_slider(grid: GridContainer, p: Array) -> void:
+	var key: String = p[0]
+	_values[key] = float(p[5])
+	var row := HBoxContainer.new()
+	row.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	var name_label := Label.new()
+	name_label.text = p[1]
+	name_label.custom_minimum_size.x = 44
+	row.add_child(name_label)
+	var slider := HSlider.new()
+	slider.min_value = p[2]
+	slider.max_value = p[3]
+	slider.step = p[4]
+	slider.value = _values[key]
+	slider.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	slider.size_flags_vertical = Control.SIZE_SHRINK_CENTER
+	row.add_child(slider)
+	var value_label := Label.new()
+	value_label.custom_minimum_size.x = 22
+	value_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_RIGHT
+	row.add_child(value_label)
+	_value_labels[key] = value_label
+	var apply: Callable = p[6]
+	slider.value_changed.connect(func(v: float) -> void:
+		_values[key] = v
+		apply.call(v)
+		_refresh())
+	grid.add_child(row)
 
 
 func _process(_delta: float) -> void:

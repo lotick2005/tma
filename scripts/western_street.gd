@@ -30,6 +30,9 @@ var _wall_top := 0.0
 var _plaza_y := 0.0
 var _finished := false
 var _is_day := false
+## Источники звука, которые звучат только днём / только во тьме.
+var _day_sounds: Array[SoundEmitter] = []
+var _dark_sounds: Array[SoundEmitter] = []
 
 @onready var _player: Player = $Player
 @onready var _geometry: Node3D = $Geometry
@@ -71,7 +74,73 @@ func _ready() -> void:
 	_b.commit()
 	_glows.commit(_geometry)
 	_place_player()
+	_setup_audio()
 	_apply_lighting()
+
+
+# ─── Звук ────────────────────────────────────────────────────────────────────
+
+## Зоны эха по карте квартала, источники звука из данных, поверхность под ногами, точки ложных тревог.
+func _setup_audio() -> void:
+	var zones := SoundZones.new()
+	zones.name = "SoundZones"
+	add_child(zones)
+	zones.build_quarter(_quarter, D.QUARTER)
+	# Площадь A у арки — широкое эхо (вне карты квартала)
+	var p: Dictionary = D.PLAZA
+	zones.add_box(SoundZones.PLAZA,
+		Vector3(WorldCoords.gx(p.x_west), _plaza_y - 0.5, WorldCoords.gz(p.y_south)),
+		Vector3(WorldCoords.gx(p.x_east), _plaza_y + SoundZones.PLAZA_HEIGHT, WorldCoords.gz(p.y_north)), 0.5)
+	AudioManager.surface_provider = _surface_at
+	AudioManager.false_alarm_points = zones.alarm_points
+	for e in D.SOUND_SOURCES:
+		var pos := _quarter.cell_center(e[1], e[2]) + Vector3.UP * float(e[3])
+		_add_sound(e[0], pos, e[4])
+	for e in D.PLAZA_SOUND_SOURCES:
+		var pos := WorldCoords.point(e[1], e[2])
+		pos.y = _plaza_y + float(e[3])
+		_add_sound(e[0], pos, e[4])
+
+
+func _add_sound(sound_name: String, pos: Vector3, when: String) -> void:
+	var em := AudioManager.add_emitter(sound_name, self, pos, {"active": false})
+	if em == null:
+		return
+	match when:
+		"day":
+			_day_sounds.append(em)
+		"dark":
+			_dark_sounds.append(em)
+		_:
+			em.set_active(true)
+
+
+## Днём — гомон площади и дневные источники, во тьме — фон тьмы, хор в молельне и ложные тревоги.
+func _apply_audio() -> void:
+	AudioManager.set_layer("bg", "ambience_day_crowd" if _is_day else "ambient_drone", 3.0)
+	for em in _day_sounds:
+		em.set_active(_is_day)
+	for em in _dark_sounds:
+		em.set_active(not _is_day)
+	AudioManager.false_alarms_enabled = not _is_day
+
+
+## Поверхность под ногами для шагов: мостки и лестницы на крыши — дерево, дворы, комнаты и крыши — земля,
+## остальное (мостовая, площадь, ступени) — камень.
+func _surface_at(pos: Vector3) -> String:
+	var c := floori(pos.x - _quarter.x0)
+	var r := floori(pos.z - _quarter.z0)
+	var ch := _quarter.cell(c, r)
+	if ch == " ":
+		return "stone"
+	if ch in "b/":
+		return "wood"
+	# На крыше (выше этажа) — глиняная обмазка
+	if pos.y > _quarter.ground[clampi(r, 0, _quarter.h - 1)] + 2.5:
+		return "earth"
+	if ch in ",_:m":
+		return "earth"
+	return "stone"
 
 
 ## Y земли в точке z: в квартале — по террасам, южнее — площадь, севернее — у ворот Антонии.
@@ -92,6 +161,7 @@ func _apply_lighting() -> void:
 	preset.apply($WorldEnvironment.environment, $Sun, _player.get_node("Head/Camera3D"), _sky,
 		1 << (LevelBuilder.INTERIOR_LAYER - 1))
 	_b.set_detail_range(DETAIL_RANGE_DAY if _is_day else DETAIL_RANGE_DARK)
+	_apply_audio()
 
 
 ## Для отладочной панели: день / тьма.
