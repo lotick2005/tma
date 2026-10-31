@@ -409,8 +409,8 @@ func _tile(mat_key: String) -> float:
 	match mat_key:
 		"plaster_a", "plaster_b", "plaster_in":
 			return 3.0
-		"gutter":
-			return 1.0
+		"gutter", "gutter_edge":
+			return 2.0
 		"ashlar", "paving":
 			return 4.0
 		"lintel":
@@ -482,22 +482,29 @@ func _check_rooms() -> void:
 # ─── Водосток посередине главной дороги ───────────────────────────────────────
 
 ## Клетка — середина главной дороги шириной 3 м: водосток идёт вдоль дороги через её центр.
-## Тёмная полоса крышек с прорезями чуть выше мостовой, без коллизии. В рядах ступеней его нет.
+## Узкая неглубокая канавка из того же камня, чуть темнее, по краям — тонкие тени бортиков. Едва заметна:
+## дорогу показывают светильники и снаряжение. Без коллизии. В рядах ступеней её нет.
 func _build_gutters() -> void:
-	var gw := 0.32
+	var gw := 0.22
 	for r in h:
 		if _band[r] == 1:
 			continue
 		for c in w:
 			if cell(c, r) != "+":
 				continue
-			var y := ground[r] + 0.012
+			var y := ground[r] + 0.006
 			var p := cell_center(c, r)
 			# Дорога на север: слева и справа ровно по одной клетке дороги, дальше — не дорога
 			if _road_run(c, r, Vector2i(1, 0)) == 3 and cell(c - 1, r) == "+" and cell(c + 1, r) == "+":
 				_flat_quad("gutter", Vector3(p.x - gw * 0.5, y, p.z - 0.5), Vector3(p.x + gw * 0.5, y, p.z + 0.5))
+				for s in [-1.0, 1.0]:
+					var x: float = p.x + s * (gw * 0.5 + 0.012)
+					_flat_quad("gutter_edge", Vector3(x - 0.012, y, p.z - 0.5), Vector3(x + 0.012, y, p.z + 0.5))
 			if _road_run(c, r, Vector2i(0, 1)) == 3 and cell(c, r - 1) == "+" and cell(c, r + 1) == "+":
 				_flat_quad("gutter", Vector3(p.x - 0.5, y, p.z - gw * 0.5), Vector3(p.x + 0.5, y, p.z + gw * 0.5))
+				for s in [-1.0, 1.0]:
+					var z: float = p.z + s * (gw * 0.5 + 0.012)
+					_flat_quad("gutter_edge", Vector3(p.x - 0.5, y, z - 0.012), Vector3(p.x + 0.5, y, z + 0.012))
 
 
 ## Сколько клеток главной дороги подряд через клетку (c, r) вдоль направления d.
@@ -888,6 +895,7 @@ func _build_doors() -> void:
 						# Кровавые ладони и царапины на наружной стороне створки
 						var face := center + in3 * (0.42 - leaf_size.z * 0.5) + Vector3.UP * 0.02
 						_b.add_mesh(PropLibrary.mesh("blood_hands"), Transform3D(Basis.looking_at(out3), face), PropLibrary.material())
+						PropRegistry.add("blood_hands", Transform3D(Basis.looking_at(out3), face))
 				"B":
 					# Приоткрыта на щель, изнутри подпёрта мебелью: не пройти, но в щель видно завал
 					var basis := Basis(Vector3.UP, yaw - deg_to_rad(18.0 + _rng.randf() * 6.0))
@@ -899,6 +907,7 @@ func _build_doors() -> void:
 					# Занавесь в проёме, край отогнут; за ней темно, пройти нельзя
 					var xf := Transform3D(Basis(Vector3.UP, yaw), center + out3 * 0.2)
 					_b.add_mesh(PropLibrary.mesh("curtain"), xf, PropLibrary.material())
+					PropRegistry.add("curtain", xf)
 					_b.collision_box(Transform3D(Basis(Vector3.UP, yaw), center + in3 * 0.2 + Vector3.UP * 1.05), Vector3(1.0, 2.1, 0.4))
 				"d":
 					var open := deg_to_rad(65.0 + _rng.randf() * 20.0)
@@ -920,6 +929,7 @@ func _barricade(at: Vector3, yaw: float) -> void:
 	var basis := Basis(Vector3.UP, yaw)
 	var mat := PropLibrary.material()
 	_b.add_mesh(PropLibrary.mesh("table_tipped"), Transform3D(basis, at + basis * Vector3(0.0, 0.0, 0.25)), mat)
+	PropRegistry.add("table_tipped", Transform3D(basis, at + basis * Vector3(0.0, 0.0, 0.25)))
 	_b.add_mesh(PropLibrary.mesh("chest"), Transform3D(basis.rotated(Vector3.UP, 0.3), at + basis * Vector3(0.3, 0.0, -0.4)), mat)
 	_b.add_mesh(PropLibrary.mesh("jar_large"), Transform3D(basis, at + basis * Vector3(-0.55, 0.0, -0.3)), mat)
 	_b.add_mesh(PropLibrary.mesh("stool"), Transform3D(basis.rotated(Vector3.FORWARD, 1.4), at + basis * Vector3(-0.1, 0.62, 0.0)), mat)

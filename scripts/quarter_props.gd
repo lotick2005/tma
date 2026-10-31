@@ -70,7 +70,7 @@ func build(rooms: Array, explicit: Array, on_walls: Array = []) -> void:
 		var r: int = e[2]
 		var p := _q.cell_center(c, r) + Vector3(e[4] if e.size() > 4 else 0.0, e[6] if e.size() > 6 else 0.0,
 			e[5] if e.size() > 5 else 0.0)
-		place(e[0], p, deg_to_rad(e[3]), _q.cell(c, r) in QuarterBuilder.INDOOR)
+		place(e[0], p, deg_to_rad(e[3]), _q.cell(c, r) in QuarterBuilder.INDOOR, e[7] if e.size() > 7 else 1.0)
 	for e in on_walls:
 		var d: Vector2i = SIDES[e[3]]
 		var c: int = e[1]
@@ -84,12 +84,14 @@ func build(rooms: Array, explicit: Array, on_walls: Array = []) -> void:
 
 
 ## Поставить предмет: MultiMesh для частых, иначе в общий пакет; коллизия — коробка по KINDS.
-func place(kind: String, pos: Vector3, yaw: float, indoor: bool = false) -> void:
+## scale — масштаб (дерево побольше, детская одежда поменьше).
+func place(kind: String, pos: Vector3, yaw: float, indoor: bool = false, scale: float = 1.0) -> void:
 	var inf := PropLibrary.info(kind)
 	if not _solid_ok and inf.get("collide", Vector3.ZERO) != Vector3.ZERO:
 		kind = "basket"
 		inf = PropLibrary.info(kind)
-	var xf := Transform3D(Basis(Vector3.UP, yaw), pos)
+	var xf := Transform3D(Basis(Vector3.UP, yaw).scaled(Vector3.ONE * scale), pos)
+	PropRegistry.add(kind, xf)
 	_b.layer = LevelBuilder.INTERIOR_LAYER if indoor else 1
 	if inf.get("mm", false):
 		_b.add_instance(PropLibrary.mesh(kind), xf, _mat)
@@ -98,10 +100,11 @@ func place(kind: String, pos: Vector3, yaw: float, indoor: bool = false) -> void
 	var size: Vector3 = inf.get("collide", Vector3.ZERO)
 	if size != Vector3.ZERO:
 		var at: Vector3 = inf.get("collide_at", Vector3.ZERO)
-		_b.collision_box(Transform3D(xf.basis, pos + xf.basis * at + Vector3.UP * size.y * 0.5), size)
+		var rot := Basis(Vector3.UP, yaw)
+		_b.collision_box(Transform3D(rot, pos + xf.basis * at + Vector3.UP * size.y * scale * 0.5), size * scale)
 	for g: Array in inf.get("glow", []):
 		var far: bool = g.size() > 3 and g[3]
-		_glows.add(xf * (g[0] as Vector3), g[1], Glows.Kind.FAR if far else Glows.Kind.NEAR, Glows.FIRE, g[2])
+		_glows.add(xf * (g[0] as Vector3), g[1] * scale, Glows.Kind.FAR if far else Glows.Kind.NEAR, Glows.FIRE, g[2])
 	for sm: Array in inf.get("smoke", []):
 		_glows.add_smoke(xf * (sm[0] as Vector3), sm[1])
 	_b.layer = 1
@@ -324,6 +327,7 @@ func _furnish_alleys() -> void:
 	var p_floor: float = _d.get("alley_floor", 0.1)
 	var p_decor: float = _d.get("wall_decor", 0.15)
 	var p_laundry: float = _d.get("laundry", 0.07)
+	var p_grass: float = _d.get("grass", 0.06)
 	for r in _q.h:
 		for c in _q.w:
 			var k := _q.cell(c, r)
@@ -338,6 +342,12 @@ func _furnish_alleys() -> void:
 					place("rubble_block", center + Vector3(_rng.randf_range(-0.5, 0.5), 0, _rng.randf_range(-0.5, 0.5)), _rng.randf() * TAU)
 				continue
 			var ws := _walls_around(c, r)
+			# Трава в щелях у стен и между плит — чуть-чуть
+			for d: Vector2i in ws:
+				if _rng.randf() < p_grass:
+					place("grass_tuft", _at_wall(c, r, d, 0.06, _rng.randf_range(-0.4, 0.4)), _rng.randf() * TAU)
+			if not clear and _rng.randf() < p_grass * 0.3:
+				place("grass_tuft", center + Vector3(_rng.randf_range(-0.45, 0.45), 0, _rng.randf_range(-0.45, 0.45)), _rng.randf() * TAU)
 			# Главная дорога чище: только трещины на стенах (вещи на ней — вручную)
 			if k == "+":
 				for d: Vector2i in ws:
