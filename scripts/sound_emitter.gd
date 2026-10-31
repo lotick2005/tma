@@ -103,6 +103,23 @@ func resume() -> void:
 		p.play(from)
 
 
+## Плавно затихнуть за time секунд и выключиться (громкость потом возвращается к прежней).
+func fade_out(time: float) -> void:
+	if not _active:
+		return
+	var keep := volume_db
+	var tw := create_tween()
+	var set_db := func(db: float) -> void:
+		volume_db = db
+		_apply()
+	var done := func() -> void:
+		set_active(false)
+		volume_db = keep
+		_apply()
+	tw.tween_method(set_db, keep, keep - 50.0, maxf(time, 0.01)).set_ease(Tween.EASE_IN)
+	tw.tween_callback(done)
+
+
 func is_active() -> bool:
 	return _active
 

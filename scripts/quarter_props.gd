@@ -65,6 +65,14 @@ func build(rooms: Array, explicit: Array, on_walls: Array = []) -> void:
 	_furnish_courts()
 	_furnish_alleys()
 	_furnish_facades()
+	place_list(explicit, on_walls)
+	_b.local = false
+	_b.layer = 1
+
+
+## Предметы по списку: explicit — как PROPS, on_walls — как WALL_PROPS (см. файл данных уровня).
+func place_list(explicit: Array, on_walls: Array = []) -> void:
+	_b.local = true
 	for e in explicit:
 		var c: int = e[1]
 		var r: int = e[2]
@@ -81,6 +89,12 @@ func build(rooms: Array, explicit: Array, on_walls: Array = []) -> void:
 		place(e[0], _at_wall(c, r, d, 0.0, along), _yaw_from_wall(d), _q.cell(c, r) in QuarterBuilder.INDOOR)
 	_b.local = false
 	_b.layer = 1
+
+
+## Ставить дальше в другой строитель и огоньки (например, предметы «после тьмы» — отдельным узлом).
+func set_builder(builder: LevelBuilder, glows: Glows) -> void:
+	_b = builder
+	_glows = glows
 
 
 ## Поставить предмет: MultiMesh для частых, иначе в общий пакет; коллизия — коробка по KINDS.

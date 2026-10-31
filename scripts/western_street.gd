@@ -30,6 +30,10 @@ var _wall_top := 0.0
 var _plaza_y := 0.0
 var _finished := false
 var _is_day := false
+## Предметы, которые появляются только после тьмы (следы людей у арки, на площади, на местах толпы).
+var _aftermath: Node3D
+var _after_b: LevelBuilder
+var _after_glows := Glows.new()
 ## Источники звука, которые звучат только днём / только во тьме.
 var _day_sounds: Array[SoundEmitter] = []
 var _dark_sounds: Array[SoundEmitter] = []
@@ -53,14 +57,15 @@ func _ready() -> void:
 	_quarter = QuarterBuilder.new(_b, _m, q, D.QUARTER_MAP, D.TERRACES,
 		WorldCoords.point(D.QUARTER.x, D.QUARTER.y), _plaza_y, _wall_top)
 	_quarter.build()
+	# Предметы квартала у площади, которых днём ещё нет, — в отдельный узел «после тьмы»
+	var split := _split_aftermath(D.PROPS, D.WALL_PROPS)
 	var props := QuarterProps.new(_quarter, _b, D.PROP_DENSITY, _glows)
-	props.build(D.ROOMS, D.PROPS, D.WALL_PROPS)
+	props.build(D.ROOMS, split.props, split.walls)
 	_b.local = true
 	for e in D.PLAZA_PROPS:
-		var pos := WorldCoords.point(e[1], e[2])
-		pos.y = _plaza_y
-		props.place(e[0], pos, deg_to_rad(e[3]))
+		props.place(e[0], map_point(Vector2(e[1], e[2])), deg_to_rad(e[3]))
 	_b.local = false
+	_build_aftermath(props, split)
 	_build_ground()
 	_build_temple_mount()
 	_build_royal_stoa()
@@ -75,7 +80,76 @@ func _ready() -> void:
 	_glows.commit(_geometry)
 	_place_player()
 	_setup_audio()
+	# Вступление — днём; если оно уже пройдено, уровень сразу во тьме
+	_is_day = not GameState.intro_done
 	_apply_lighting()
+	if GameState.intro_done:
+		show_aftermath()
+	else:
+		var intro := Intro.new()
+		intro.name = "Intro"
+		add_child(intro)
+		intro.setup(self, D.INTRO, _player)
+
+
+# ─── Вступление: что днём и что после тьмы ───────────────────────────────────
+
+## Делит PROPS и WALL_PROPS: что в рядах от INTRO.aftermath_from_row (видно с площади) — «после тьмы».
+func _split_aftermath(props_list: Array, walls_list: Array) -> Dictionary:
+	var out := {"props": [], "walls": [], "after_props": [], "after_walls": []}
+	var from_row: int = D.INTRO.aftermath_from_row
+	var always: Array = D.INTRO.always
+	for e in props_list:
+		var late: bool = e[2] >= from_row and not always.has(e[0])
+		(out.after_props if late else out.props).append(e)
+	for e in walls_list:
+		var late: bool = e[2] >= from_row and not always.has(e[0])
+		(out.after_walls if late else out.walls).append(e)
+	return out
+
+
+## Узел «после тьмы»: свой строитель (пакеты, коллизия) и свои огоньки; спрятан, пока вступление не прошло.
+func _build_aftermath(props: QuarterProps, split: Dictionary) -> void:
+	_aftermath = Node3D.new()
+	_aftermath.name = "Aftermath"
+	add_child(_aftermath)
+	_after_b = LevelBuilder.new(_aftermath)
+	props.set_builder(_after_b, _after_glows)
+	props.place_list(split.after_props, split.after_walls)
+	_after_b.local = true
+	for e in D.PLAZA_AFTERMATH:
+		props.place(e[0], map_point(Vector2(e[1], e[2])), deg_to_rad(e[3]))
+	# На местах людей толпы — то, что от них осталось
+	for e in D.INTRO.crowd:
+		props.place(e[5], map_point(Vector2(e[0], e[1])), deg_to_rad(e[2]))
+	_after_b.local = false
+	props.set_builder(_b, _glows)
+	_after_b.commit()
+	_after_glows.commit(_aftermath)
+	_aftermath.visible = false
+	_after_b.body.process_mode = Node.PROCESS_MODE_DISABLED
+
+
+func show_aftermath() -> void:
+	_aftermath.visible = true
+	_after_b.body.process_mode = Node.PROCESS_MODE_INHERIT
+
+
+## Точка карты (x, y) на мостовой площади A.
+func map_point(p: Vector2) -> Vector3:
+	var pos := WorldCoords.point(p.x, p.y)
+	pos.y = _plaza_y
+	return pos
+
+
+## Середина клетки карты квартала на земле.
+func cell_point(c: int, r: int) -> Vector3:
+	return _quarter.cell_center(c, r)
+
+
+## Куда смотреть в конце вступления: на север по главной дороге, к кварталу и маяку.
+func goal_point() -> Vector3:
+	return _quarter.cell_center(20, 150) + Vector3.UP * 3.0
 
 
 # ─── Звук ────────────────────────────────────────────────────────────────────
@@ -116,8 +190,8 @@ func _add_sound(sound_name: String, pos: Vector3, when: String) -> void:
 
 
 ## Днём — гомон площади и дневные источники, во тьме — фон тьмы, хор в молельне и ложные тревоги.
-func _apply_audio() -> void:
-	AudioManager.set_layer("bg", "ambience_day_crowd" if _is_day else "ambient_drone", 3.0)
+func _apply_audio(fade := 3.0) -> void:
+	AudioManager.set_layer("bg", "ambience_day_crowd" if _is_day else "ambient_drone", fade)
 	for em in _day_sounds:
 		em.set_active(_is_day)
 	for em in _dark_sounds:
@@ -156,12 +230,42 @@ func _current_preset() -> LightingPreset:
 	return day if _is_day else darkness
 
 
-func _apply_lighting() -> void:
+func _apply_lighting(audio_fade := 3.0) -> void:
 	var preset := _current_preset()
 	preset.apply($WorldEnvironment.environment, $Sun, _player.get_node("Head/Camera3D"), _sky,
 		1 << (LevelBuilder.INTERIOR_LAYER - 1))
-	_b.set_detail_range(DETAIL_RANGE_DAY if _is_day else DETAIL_RANGE_DARK)
-	_apply_audio()
+	_set_detail_range(DETAIL_RANGE_DAY if _is_day else DETAIL_RANGE_DARK)
+	_apply_audio(audio_fade)
+
+
+func _set_detail_range(r: float) -> void:
+	_b.set_detail_range(r)
+	if _after_b:
+		_after_b.set_detail_range(r)
+
+
+## День или тьма (свет и звук). audio_fade — за сколько секунд сменится фон.
+func set_day(on: bool, audio_fade := 3.0) -> void:
+	_is_day = on
+	_apply_lighting(audio_fade)
+
+
+## Для катсцен (шаг «lighting»): смесь пресетов "day" / "darkness", t от 0 до 1. Звук не трогает.
+func blend_lighting(from: String, to: String, t: float) -> void:
+	var presets := {"day": day, "darkness": darkness}
+	var a: LightingPreset = presets[from]
+	var b: LightingPreset = presets[to]
+	LightingPreset.apply_blend(a, b, t, $WorldEnvironment.environment, $Sun, _player.get_node("Head/Camera3D"), _sky,
+		1 << (LevelBuilder.INTERIOR_LAYER - 1))
+	var ranges := {"day": DETAIL_RANGE_DAY, "darkness": DETAIL_RANGE_DARK}
+	_set_detail_range(lerpf(ranges[from], ranges[to], t))
+
+
+## Плавно заглушить дневные источники с этим звуком (пустое имя — все).
+func fade_day_sound(sound_name: String, time: float) -> void:
+	for em in _day_sounds:
+		if sound_name == "" or em.sound_name == sound_name:
+			em.fade_out(time)
 
 
 ## Для отладочной панели: день / тьма.

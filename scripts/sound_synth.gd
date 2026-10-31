@@ -655,3 +655,74 @@ func shuffle() -> AudioStreamWAV:
 		at += dur + _rng.randf_range(0.35, 0.7)
 	_lp(out, 2500.0)
 	return _wav(_normalize(_edges(out, 0.01), 0.85))
+
+# ─── Вступление (этап 4) ─────────────────────────────────────────────────────
+
+## Крик и плач толпы: много голосов, у каждого протяжные вопли с падающей высотой, всхлипы, срывы.
+## Петля 8 с. «Обращу все песни ваши в плач» (Ам 8:10) — то же пение, сломанное.
+func crowd_wail() -> AudioStreamWAV:
+	_rate = RATE_LOW
+	var sec := 9.5
+	var saw := _saw_table(20)
+	var src := _buf(sec)
+	var n := src.size()
+	for v in 9:
+		var base := _rng.randf_range(180.0, 420.0)
+		var gain := _rng.randf_range(0.5, 1.0)
+		var ph := _rng.randf()
+		var t0 := _rng.randf_range(0.0, 1.5)
+		var t := t0
+		while t < sec - 0.5:
+			# Один вопль: резкий подъём и долгое падение высоты, дрожание голоса
+			var dur := _rng.randf_range(1.2, 2.8)
+			var f0 := base * _rng.randf_range(1.1, 1.5)
+			var f1 := base * _rng.randf_range(0.55, 0.8)
+			var start := int(t * _rate)
+			var count := mini(int(dur * _rate), n - start)
+			for i in count:
+				var k := float(i) / (dur * _rate)
+				var f := lerpf(f0, f1, k * k) * (1.0 + 0.02 * sin(TAU_F * 6.5 * k * dur + v))
+				var sob := 0.75 + 0.25 * sin(TAU_F * _rng.randf_range(3.0, 3.4) * k * dur)
+				ph = fmod(ph + f / _rate, 1.0)
+				var env := minf(k * 12.0, 1.0) * pow(1.0 - k, 0.6) * sob
+				src[start + i] += saw[int(ph * 2048.0)] * env * gain
+			t += dur + _rng.randf_range(0.1, 0.9)
+	var voiced := _formants(src, [[750.0, 2.5, 1.0], [1250.0, 3.0, 0.6], [2700.0, 4.0, 0.2]])
+	# Дыхание и хрип поверх
+	var air := _lp(_noise(sec), 2200.0)
+	for i in n:
+		air[i] *= 0.06 * (0.6 + 0.4 * sin(TAU_F * 0.37 * float(i) / _rate))
+	_mix(voiced, air, 1.0)
+	_lp(voiced, 2400.0)
+	return _wav(_normalize(_seamless(voiced, 1.5), 0.85), true)
+
+
+## Сбивчивая речь (вестник): быстрые невнятные слоги с придыханием, сбои, паузы. Заглушка — потом запишем голос.
+func voice_babble() -> AudioStreamWAV:
+	_rate = RATE_LOW
+	var vowels := [[300.0, 2300.0], [500.0, 1800.0], [650.0, 1050.0], [720.0, 1250.0], [380.0, 850.0]]
+	var saw := _saw_table(18)
+	var sec := 2.6
+	var out := _buf(sec)
+	var t := 0.08
+	var base := _rng.randf_range(150.0, 175.0)
+	while t < sec - 0.35:
+		var dur := _rng.randf_range(0.09, 0.2)
+		var v: Array = vowels[_rng.randi() % vowels.size()]
+		var src := _buf(dur)
+		var ph := _rng.randf()
+		var f := base * _rng.randf_range(0.95, 1.35)
+		for i in src.size():
+			var k := float(i) / src.size()
+			ph = fmod(ph + f * (1.0 - 0.1 * k) / _rate, 1.0)
+			src[i] = saw[int(ph * 2048.0)] * sin(PI * k)
+		var shaped := _formants(src, [[v[0], 3.0, 1.0], [v[1], 4.0, 0.6]])
+		_mix(out, shaped, 1.0, int(t * _rate))
+		# Придыхание между слогами
+		if _rng.randf() < 0.5:
+			var h := _bp(_noise(0.07), 1800.0, 1.0)
+			for i in h.size():
+				h[i] *= sin(PI * float(i) / h.size())
+			_mix(out, h, 0.25, int((t + dur) * _rate))
+		t += dur + (_rng.randf_range(0.25, 0.45) if _rng.randf() < 0.15 else _rng.randf_range(0.01, 0.05))
+	return _wav(_normalize(_edges(out, 0.01), 0.8))

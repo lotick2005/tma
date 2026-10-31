@@ -81,8 +81,57 @@ func apply(env: Environment, sun: DirectionalLight3D, camera: Camera3D = null, s
 				_set_light(sun, sun_enabled, sun_color, sun_energy, -sun_pitch, sun_azimuth)
 	if sky and sky.has_method("show_body"):
 		sky.show_body(self)
+		if sky.has_method("set_fade"):
+			sky.set_fade(1.0)
 	if camera:
 		camera.far = camera_far
+## Смесь двух пресетов: t = 0 — a, t = 1 — b (вступление: день гаснет в тьму за несколько секунд).
+## Туман смешивается по логарифму расстояния — видимость падает равномерно, а не в самом конце.
+## Свет — от солнца a к свету небесного тела b, небесное тело b проявляется с sky_from до sky_to.
+static func apply_blend(a: LightingPreset, b: LightingPreset, t: float, env: Environment, sun: DirectionalLight3D,
+		camera: Camera3D = null, sky: Node = null, interior_mask: int = 0, sky_from := 0.1, sky_to := 0.6) -> void:
+	t = clampf(t, 0.0, 1.0)
+	var log_lerp := func(x: float, y: float) -> float: return exp(lerpf(log(maxf(x, 0.01)), log(maxf(y, 0.01)), t))
+	PsxMaterial.set_global("psx_fog_color", a.fog_color.lerp(b.fog_color, t))
+	PsxMaterial.set_global("psx_fog_start", log_lerp.call(a.fog_start, b.fog_start))
+	PsxMaterial.set_global("psx_fog_end", log_lerp.call(a.fog_end, b.fog_end))
+	PsxMaterial.set_global("psx_light_max", lerpf(a.light_max, b.light_max, t))
+	env.background_mode = Environment.BG_COLOR
+	env.background_color = a.background().lerp(b.background(), t)
+	env.ambient_light_source = Environment.AMBIENT_SOURCE_COLOR
+	env.ambient_light_color = a.ambient_color.lerp(b.ambient_color, t)
+	env.ambient_light_energy = lerpf(a.ambient_energy, b.ambient_energy, t)
+	if sun:
+		var la := a.light_params()
+		var lb := b.light_params()
+		sun.shadow_enabled = a.sun_shadows and b.sun_shadows
+		sun.light_cull_mask = 0xFFFFF & ~interior_mask
+		var ea: float = la[2] if la[0] else 0.0
+		var eb: float = lb[2] if lb[0] else 0.0
+		_set_light(sun, ea > 0.0 or eb > 0.0, (la[1] as Color).lerp(lb[1], t), lerpf(ea, eb, t),
+			lerpf(la[3], lb[3], t), rad_to_deg(lerp_angle(deg_to_rad(la[4]), deg_to_rad(lb[4]), t)))
+	if sky and sky.has_method("show_body"):
+		var shown := b if b.sky_body != SkyBody.NONE else a
+		sky.show_body(shown)
+		if sky.has_method("set_fade"):
+			var k := smoothstep(sky_from, sky_to, t) if shown == b else 1.0 - smoothstep(sky_from, sky_to, t)
+			sky.set_fade(k)
+	if camera:
+		camera.far = maxf(a.camera_far, b.camera_far) if t > 0.0 and t < 1.0 else (b.camera_far if t >= 1.0 else a.camera_far)
+
+
+## Цвет фона: днём — туман, во тьме — своё небо.
+func background() -> Color:
+	return fog_color if sky_is_fog else sky_color
+
+
+## Направленный свет пресета: [включён, цвет, яркость, высота над горизонтом, азимут].
+func light_params() -> Array:
+	if sky_body == SkyBody.BLACK_SUN:
+		return [true, black_sun_light_color, black_sun_light_energy, black_sun_elevation, black_sun_azimuth]
+	return [sun_enabled, sun_color, sun_energy, -sun_pitch, sun_azimuth]
+
+
 ## Направление на небесное тело (единичный вектор от наблюдателя).
 static func direction(elevation: float, azimuth: float) -> Vector3:
 	return Basis.from_euler(Vector3(deg_to_rad(-elevation), deg_to_rad(azimuth), 0.0)) * Vector3.BACK

@@ -28,6 +28,7 @@ var step_amount := 0.0
 var _eye_height := 1.62
 var _pitch := 0.0
 var _speed_ratio := 0.0
+var _head_mesh: MeshInstance3D
 var _idx := {}
 var _arms_mat: ShaderMaterial
 
@@ -66,6 +67,7 @@ func _ready() -> void:
 	_arms_mat.set_shader_parameter("self_illum_color", _lamp.light_color)
 
 	var head := MeshInstance3D.new()
+	_head_mesh = head
 	head.mesh = HeroModel.build_head(skeleton)
 	head.skin = skin
 	head.skeleton = NodePath("..")
@@ -73,6 +75,13 @@ func _ready() -> void:
 	head.extra_cull_margin = 1.0
 	head.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_SHADOWS_ONLY
 	skeleton.add_child(head)
+
+
+## Голову обычно не видно (только тень). Катсцена, у которой камера ушла из глаз, показывает её.
+func set_head_visible(on: bool) -> void:
+	if _head_mesh:
+		_head_mesh.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_ON if on \
+			else GeometryInstance3D.SHADOW_CASTING_SETTING_SHADOWS_ONLY
 
 
 func bone(bone_name: String) -> int:
