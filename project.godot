@@ -14,9 +14,16 @@ config/name="Тьма по всей земле"
 run/main_scene="res://scenes/levels/level_1_western_street.tscn"
 config/features=PackedStringArray("4.7", "GL Compatibility")
 
+[audio]
+
+driver/output_latency.web=80
+general/default_playback_type.web=0
+
 [autoload]
 
 GameState="*res://scripts/game_state.gd"
+ThreatDirector="*res://scripts/threat_director.gd"
+AudioManager="*res://scripts/audio_manager.gd"
 
 [display]
 

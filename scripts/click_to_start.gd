@@ -5,7 +5,7 @@ extends CanvasLayer
 ## Esc отпускает курсор (браузер делает это и сам), клик возвращает его.
 ## Полноценная пауза — этап 10.
 
-## Игрок кликнул первый раз: мышь захвачена, браузер разрешил звук.
+## Игрок кликнул первый раз: мышь захвачена, браузер разрешил звук (AudioManager.unlock()).
 signal started
 
 ## Пока true, экран «Кликни, чтобы продолжить» не показывается (открыта отладочная панель).
@@ -51,4 +51,5 @@ func _on_panel_input(event: InputEvent) -> void:
 		_started = true
 		_start_panel.hide()
 		get_tree().paused = false
+		AudioManager.unlock()
 		started.emit()
