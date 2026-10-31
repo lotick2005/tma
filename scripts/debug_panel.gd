@@ -4,8 +4,12 @@ extends CanvasLayer
 ## значениями: её можно выделить или скопировать кнопкой и прислать, чтобы вписать как значения по умолчанию.
 ## Ищет уровень через родителя: WorldEnvironment, Player (тело и светильник), солнце (если есть).
 ## Если уровень умеет (toggle_day) — кнопка «день / тьма».
+## Переключатель «Подписи предметов»: по центру экрана — имя (kind) предмета под прицелом, луч из камеры до LABEL_RANGE м
+## (PropRegistry). По этим именам удобно называть предметы в отзывах. Работает и с закрытой панелью.
 
 const FONT_SIZE := 8
+## Дальность луча подписей предметов, м.
+const LABEL_RANGE := 6.0
 
 var _values := {}
 var _value_labels := {}
@@ -16,6 +20,8 @@ var _lamp: Node
 var _body: HeroBody
 var _panel: PanelContainer
 var _out: LineEdit
+var _labels_on := false
+var _pick_label: Label
 
 
 func _ready() -> void:
@@ -144,6 +150,12 @@ func _build() -> void:
 			_rebuild())
 		row.add_child(day_btn)
 
+	var labels_btn := CheckButton.new()
+	labels_btn.text = "Подписи предметов (имя под прицелом)"
+	labels_btn.button_pressed = _labels_on
+	labels_btn.toggled.connect(func(on: bool) -> void: _labels_on = on)
+	box.add_child(labels_btn)
+
 	var hint := Label.new()
 	hint.text = "Строка значений (выдели или нажми «Копировать»):"
 	box.add_child(hint)
@@ -156,6 +168,36 @@ func _build() -> void:
 	copy.pressed.connect(func() -> void: DisplayServer.clipboard_set(_out.text))
 	box.add_child(copy)
 	_refresh()
+
+
+func _process(_delta: float) -> void:
+	if _pick_label == null:
+		_pick_label = Label.new()
+		_pick_label.add_theme_font_size_override("font_size", FONT_SIZE)
+		_pick_label.add_theme_color_override("font_outline_color", Color.BLACK)
+		_pick_label.add_theme_constant_override("outline_size", 2)
+		_pick_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+		_pick_label.set_anchors_and_offsets_preset(Control.PRESET_CENTER)
+		_pick_label.grow_horizontal = Control.GROW_DIRECTION_BOTH
+		_pick_label.mouse_filter = Control.MOUSE_FILTER_IGNORE
+		add_child(_pick_label)
+	_pick_label.visible = _labels_on
+	if not _labels_on:
+		return
+	var cam := get_viewport().get_camera_3d()
+	if cam == null:
+		return
+	var from := cam.global_position
+	var dir := -cam.global_transform.basis.z
+	# Стены закрывают предметы за ними
+	var query := PhysicsRayQueryParameters3D.create(from, from + dir * LABEL_RANGE)
+	var player := _level.find_child("Player", true, false) as CollisionObject3D
+	if player:
+		query.exclude = [player.get_rid()]
+	var hit := cam.get_world_3d().direct_space_state.intersect_ray(query)
+	var limit: float = from.distance_to(hit.position) if not hit.is_empty() else INF
+	var kind := PropRegistry.pick(from, dir, LABEL_RANGE, limit)
+	_pick_label.text = "+\n" + kind
 
 
 ## Пересобрать панель после смены света: ползунки берут новые значения.

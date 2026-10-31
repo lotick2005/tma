@@ -8,8 +8,8 @@ extends RefCounted
 
 ## Плитки атласа (4 в ряд, ATLAS_ROWS рядов по 64 пикселя).
 enum Tile { CLAY, CLAY_DARK, WOOD, WOOD_DARK, LINEN, CLOTH_RED, CLOTH_BLUE, STRAW, SACK, STONE, BASALT, LEAF, BARK, METAL, FOOD, PALM,
-	BLOOD, BLOOD_DARK, SHROUD, DUST, CLOTH_OCHRE, SOOT, IRON, COIN }
-const ATLAS_ROWS := 6
+	BLOOD, BLOOD_DARK, SHROUD, DUST, CLOTH_OCHRE, SOOT, IRON, COIN, SKIN, HAIR, GRASS, BLOOD_BLACK }
+const ATLAS_ROWS := 7
 
 ## Свойства предметов: collide — размер коробки коллизии (ноль — без неё, можно пройти/перешагнуть), collide_at — её сдвиг;
 ## mm — часто повторяется, рисуется через MultiMeshInstance3D; wall — вешается на стену (точка — у стены);
@@ -79,8 +79,9 @@ const KINDS := {
 	"cloak": {"collide": Vector3.ZERO},
 	"litter": {"collide": Vector3(1.9, 0.5, 0.7)},
 	"body": {"collide": Vector3.ZERO},
-	"body_wall": {"collide": Vector3.ZERO},
 	"body_soldier": {"collide": Vector3.ZERO},
+	"body_doorway": {"collide": Vector3.ZERO},
+	"soldier_sitting": {"collide": Vector3.ZERO, "wall": true},
 	# Ужас: кровь (тёмно-бордовая, не красная), люди исчезли — пустая одежда, святые прошли — пелены и пыль
 	"blood_pool": {"collide": Vector3.ZERO},
 	"blood_drag": {"collide": Vector3.ZERO},
@@ -91,18 +92,37 @@ const KINDS := {
 	"shroud_strip": {"collide": Vector3.ZERO},
 	"burial_dust": {"collide": Vector3.ZERO},
 	"table_overturned": {"collide": Vector3(1.1, 0.75, 0.65)},
+	# Маленькие истории
+	"shroud_pile": {"collide": Vector3.ZERO},
+	"graffiti_greek": {"collide": Vector3.ZERO, "wall": true},
+	"rope_cut": {"collide": Vector3.ZERO},
+	"bucket": {"collide": Vector3.ZERO},
+	"toy_bird": {"collide": Vector3.ZERO},
+	"toy_cart": {"collide": Vector3.ZERO},
+	"hearth_embers": {"collide": Vector3.ZERO,
+		"glow": [[Vector3(0.05, 0.08, 0.0), 0.1, 0.8], [Vector3(-0.1, 0.07, 0.08), 0.07, 0.6], [Vector3(0.0, 0.1, -0.1), 0.06, 0.5]]},
+	"bowl_food": {"collide": Vector3.ZERO},
+	"ladder_fallen": {"collide": Vector3.ZERO},
+	# Зелень в щелях и на крышах
+	"grass_tuft": {"collide": Vector3.ZERO, "mm": true},
+	"bush_small": {"collide": Vector3.ZERO},
+	"herb_pot": {"collide": Vector3.ZERO},
 	# Зелень
 	"olive_tree": {"collide": Vector3(0.5, 2.0, 0.5)},
 	"fig_tree": {"collide": Vector3(0.5, 2.0, 0.5)},
 	"pergola": {"collide": Vector3.ZERO},
 	# Римское
 	"shield": {"collide": Vector3.ZERO},
+	"shield_leaning": {"collide": Vector3.ZERO, "wall": true},
+	"spear_broken": {"collide": Vector3.ZERO},
 	"helmet": {"collide": Vector3.ZERO},
 	"spear": {"collide": Vector3.ZERO},
 	"spear_fallen": {"collide": Vector3.ZERO},
 	"caliga": {"collide": Vector3.ZERO, "mm": true},
 	"brazier_overturned": {"collide": Vector3.ZERO,
 		"glow": [[Vector3(0.5, 0.05, 0.2), 0.08, 0.7], [Vector3(0.8, 0.04, -0.1), 0.06, 0.5], [Vector3(0.35, 0.05, -0.25), 0.07, 0.6]]},
+	"brazier_smoldering": {"collide": Vector3(0.6, 1.0, 0.6),
+		"glow": [[Vector3(0.0, 1.03, 0.0), 0.22, 0.7, true], [Vector3(0.0, 1.15, 0.0), 0.6, 0.25, true]]},
 	"brazier": {"collide": Vector3(0.6, 1.0, 0.6),
 		"glow": [[Vector3(0.0, 1.05, 0.0), 0.3, 1.2, true], [Vector3(0.0, 1.3, 0.0), 0.9, 0.45, true]]},
 	# Двери: кровавые отпечатки ладоней и царапины (на створке), мебель, которой заваливают дверь изнутри
@@ -171,11 +191,15 @@ static func _atlas() -> ImageTexture:
 		ProcTextures.mottled(64, Color(0.26, 0.035, 0.04), 0.05, 0.14, 77),        # BLOOD — тёмно-бордовая
 		ProcTextures.mottled(64, Color(0.15, 0.025, 0.03), 0.05, 0.12, 78),        # BLOOD_DARK — запёкшаяся
 		ProcTextures.stripes(64, 6, Color(0.86, 0.84, 0.78), Color(0.72, 0.7, 0.64), 79),  # SHROUD — погребальные пелены
-		ProcTextures.mottled(64, Color(0.86, 0.85, 0.82), 0.05, 0.12, 80),         # DUST — погребальная пыль
+		ProcTextures.mottled(64, Color(0.82, 0.81, 0.77), 0.05, 0.12, 80),         # DUST — погребальная пыль
 		ProcTextures.hemmed_cloth(64, Color(0.68, 0.48, 0.2), 6, 81),              # CLOTH_OCHRE
 		ProcTextures.mottled(64, Color(0.045, 0.04, 0.035), 0.03, 0.05, 82),       # SOOT — тёмное углубление, копоть
 		ProcTextures.mottled(64, Color(0.24, 0.22, 0.21), 0.06, 0.1, 83),          # IRON
 		ProcTextures.mottled(64, Color(0.74, 0.72, 0.64), 0.08, 0.1, 84),          # COIN — серебро
+		ProcTextures.mottled(64, Color(0.62, 0.45, 0.34), 0.03, 0.06, 85),         # SKIN
+		ProcTextures.mottled(64, Color(0.13, 0.1, 0.08), 0.04, 0.06, 86),          # HAIR
+		ProcTextures.stripes(64, 10, Color(0.38, 0.42, 0.2), Color(0.5, 0.48, 0.26), 87),  # GRASS — сухая трава
+		ProcTextures.mottled(64, Color(0.07, 0.012, 0.016), 0.03, 0.08, 88),       # BLOOD_BLACK — середина лужи
 	]
 	var img := Image.create_empty(256, 64 * ATLAS_ROWS, false, Image.FORMAT_RGB8)
 	for i in tiles.size():
@@ -562,26 +586,6 @@ static func _make_cloak() -> Mesh:
 	return b.commit()
 
 
-## Опрокинутые носилки: две жерди и полотно, на боку.
-static func _make_litter() -> Mesh:
-	var b := PB.new()
-	var tilt := Basis(Vector3.BACK, 1.25)
-	for z in [-0.3, 0.3]:
-		b.box(Vector3(0, 0.35, z), Vector3(2.0, 0.06, 0.06), Tile.WOOD, tilt)
-	b.box(Vector3(0, 0.3, 0), Vector3(1.4, 0.03, 0.6), Tile.LINEN, tilt)
-	b.box(Vector3(0.6, 0.06, 0), Vector3(0.6, 0.1, 0.5), Tile.LINEN, Basis(Vector3.UP, 0.3))
-	return b.commit()
-
-
-## Тело, укрытое тканью: вытянутый бугор с головой.
-static func _make_body() -> Mesh:
-	var b := PB.new()
-	b.lathe([Vector2(0, -0.85), Vector2(0.14, -0.8), Vector2(0.22, -0.3), Vector2(0.24, 0.2), Vector2(0.18, 0.55),
-		Vector2(0.12, 0.62), Vector2(0.13, 0.82), Vector2(0, 0.9)], 6, Tile.LINEN, Vector3(0, 0.12, 0),
-		Basis(Vector3.RIGHT, PI * 0.5), Vector2(1.0, 0.45))
-	return b.commit()
-
-
 # ─── Зелень ──────────────────────────────────────────────────────────────────
 
 ## Олива: кривой ствол и низкая серо-зелёная крона из нескольких комков.
@@ -625,15 +629,6 @@ static func _make_pergola() -> Mesh:
 
 
 # ─── Римское (брошено у поста стражи) ────────────────────────────────────────
-
-static func _make_shield() -> Mesh:
-	var b := PB.new()
-	# Овальный плоский щит ауксилия, лежит на земле
-	b.lathe([Vector2(0, 0), Vector2(0.4, 0.0), Vector2(0.42, 0.03), Vector2(0.05, 0.06), Vector2(0, 0.06)], 8, Tile.CLOTH_RED,
-		Vector3(0, 0.0, 0), Basis(), Vector2(0.7, 1.0))
-	b.lathe([Vector2(0, 0), Vector2(0.08, 0), Vector2(0, 0.04)], 6, Tile.METAL, Vector3(0, 0.06, 0))
-	return b.commit()
-
 
 static func _make_helmet() -> Mesh:
 	var b := PB.new()
@@ -911,18 +906,6 @@ static func _make_coins() -> Mesh:
 	return b.commit()
 
 
-## Опрокинутый лоток: столешница на боку, навес сорван и лежит на земле.
-static func _make_stall_overturned() -> Mesh:
-	var b := PB.new()
-	var tip := Basis(Vector3.RIGHT, PI * 0.5 - 0.15)
-	b.box(Vector3(0, 0.5, 0.2), Vector3(2.0, 0.06, 1.0), Tile.WOOD, tip)
-	b.box(Vector3(0, 0.2, -0.1), Vector3(2.0, 0.04, 0.6), Tile.WOOD_DARK, Basis(Vector3.RIGHT, 0.4))
-	for x in [-0.95, 0.95]:
-		b.box(Vector3(x, 0.04, -0.6), Vector3(0.08, 0.08, 1.8), Tile.WOOD, Basis(Vector3.UP, x * 0.1))
-	b.quad(Vector3(-1.1, 0.05, -0.4), Vector3(1.0, 0.25, -0.5), Vector3(1.1, 0.02, -1.6), Vector3(-1.0, 0.03, -1.5), Tile.CLOTH_BLUE, true)
-	return b.commit()
-
-
 # ─── Пасхальная трапеза ──────────────────────────────────────────────────────
 
 ## Низкий стол для трапезы лёжа (0,4 м).
@@ -1079,16 +1062,6 @@ static func _blob(b: PB, center: Vector3, rx: float, rz: float, tile: int, seed:
 		b.quad(center, p0, p1, center, tile)
 
 
-## Лужа крови у тела: тёмная середина и рваный край, пара брызг.
-static func _make_blood_pool() -> Mesh:
-	var b := PB.new()
-	_blob(b, Vector3(0, 0.012, 0), 0.55, 0.4, Tile.BLOOD, 61, 11)
-	_blob(b, Vector3(0.05, 0.016, 0.02), 0.32, 0.22, Tile.BLOOD_DARK, 62, 8)
-	_blob(b, Vector3(0.75, 0.012, 0.25), 0.07, 0.05, Tile.BLOOD, 63, 6)
-	_blob(b, Vector3(-0.6, 0.012, -0.35), 0.05, 0.08, Tile.BLOOD, 64, 6)
-	return b.commit()
-
-
 ## Полоса волочения: тело тащили к двери (по −Z), полоса сужается и рвётся, по краям — следы пальцев.
 static func _make_blood_drag() -> Mesh:
 	var b := PB.new()
@@ -1123,121 +1096,6 @@ static func _make_blood_steps() -> Mesh:
 	return b.commit()
 
 
-## Брызги и потёки на стене (точка у стены, смотрит в −Z): пятна на высоте 0,6–1,6 м и потёки вниз.
-static func _make_blood_splatter() -> Mesh:
-	var b := PB.new()
-	b.xf = Transform3D(Basis(Vector3.UP, PI), Vector3.ZERO)
-	var rng := _rng(67)
-	# Основное пятно удара и брызги вокруг — неровные многоугольники, потёки вниз
-	_blob_v(b, Vector2(0.0, 1.25), 0.2, 0.15, 0.006, Tile.BLOOD, 74, 10)
-	for i in 12:
-		var a := rng.randf() * TAU
-		var d := rng.randf_range(0.25, 0.55)
-		var c := Vector2(cos(a) * d * 1.2, 1.25 + sin(a) * d * 0.7)
-		var s := rng.randf_range(0.015, 0.06)
-		_blob_v(b, c, s * rng.randf_range(0.8, 1.6), s, 0.006, Tile.BLOOD if i % 3 else Tile.BLOOD_DARK, 75 + i, 6)
-		if s > 0.045:
-			var len := rng.randf_range(0.2, 0.6)
-			b.quad(Vector3(c.x - 0.015, c.y, 0.007), Vector3(c.x + 0.015, c.y, 0.007), Vector3(c.x + 0.008, c.y - len, 0.007),
-				Vector3(c.x - 0.008, c.y - len, 0.007), Tile.BLOOD_DARK)
-	_hand(b, Vector2(0.25, 1.15), -0.4, 0.008, Tile.BLOOD_DARK)
-	return b.commit()
-
-
-## Тело под тканью, сидящее у стены (точка у стены, тело в −Z).
-static func _make_body_wall() -> Mesh:
-	var b := PB.new()
-	# Туловище, привалившееся к стене, голова на груди; ноги вытянуты
-	b.lathe([Vector2(0, 0), Vector2(0.24, 0.02), Vector2(0.26, 0.35), Vector2(0.2, 0.62), Vector2(0.12, 0.7), Vector2(0.13, 0.86),
-		Vector2(0, 0.92)], 6, Tile.LINEN, Vector3(0, 0, -0.25), Basis(Vector3.RIGHT, -0.25), Vector2(1.0, 0.7))
-	for x in [-0.12, 0.12]:
-		b.lathe([Vector2(0, 0), Vector2(0.09, 0.0), Vector2(0.08, 0.75), Vector2(0, 0.78)], 5, Tile.LINEN,
-			Vector3(x, 0.09, -0.3), Basis(Vector3.RIGHT, -PI * 0.5))
-	return b.commit()
-
-
-## Тело солдата: под красным плащом, из-под края — калиги.
-static func _make_body_soldier() -> Mesh:
-	var b := PB.new()
-	b.lathe([Vector2(0, -0.85), Vector2(0.14, -0.8), Vector2(0.24, -0.3), Vector2(0.26, 0.2), Vector2(0.2, 0.55),
-		Vector2(0.12, 0.62), Vector2(0.13, 0.82), Vector2(0, 0.9)], 6, Tile.CLOTH_RED, Vector3(0, 0.12, 0),
-		Basis(Vector3.RIGHT, PI * 0.5), Vector2(1.0, 0.45))
-	for x in [-0.1, 0.1]:
-		b.box(Vector3(x, 0.06, 0.95), Vector3(0.1, 0.12, 0.26), Tile.WOOD_DARK)
-	_blob(b, Vector3(0.3, 0.012, -0.2), 0.4, 0.3, Tile.BLOOD_DARK, 69)
-	return b.commit()
-
-
-## Пустая одежда: человек лежал — и растворился внутри неё. Туника распластана по силуэту, рукава
-## раскинуты, пояс на месте талии, у подола — сандалии там, где были ступни. Голова — пустая складка плаща.
-static func _make_clothes_lying() -> Mesh:
-	var b := PB.new()
-	var y := 0.012
-	# Туника: от плеч (z −0.55) до подола (z 0.45), чуть шире в плечах
-	b.quad(Vector3(-0.24, y, -0.55), Vector3(0.24, y, -0.55), Vector3(0.3, y, 0.45), Vector3(-0.3, y, 0.45), Tile.CLOTH_RED)
-	b.quad(Vector3(-0.24, y, -0.55), Vector3(-0.55, y, -0.35), Vector3(-0.5, y, -0.22), Vector3(-0.22, y, -0.38), Tile.CLOTH_RED, true)
-	b.quad(Vector3(0.22, y, -0.38), Vector3(0.5, y, -0.22), Vector3(0.55, y, -0.35), Vector3(0.24, y, -0.55), Tile.CLOTH_RED, true)
-	# Лёгкие складки и пояс
-	b.box(Vector3(0, 0.02, -0.05), Vector3(0.52, 0.02, 0.05), Tile.WOOD_DARK)
-	b.box(Vector3(0.05, 0.03, 0.2), Vector3(0.4, 0.04, 0.08), Tile.CLOTH_RED, Basis(Vector3.UP, 0.15))
-	# Плащ под головой — смятый пустой ком
-	b.lathe([Vector2(0, 0.0), Vector2(0.28, 0.0), Vector2(0.2, 0.06), Vector2(0, 0.08)], 6, Tile.SACK, Vector3(0.0, 0.0, -0.75),
-		Basis(), Vector2(1.0, 0.7))
-	# Сандалии — там, где были ступни
-	for x in [-0.12, 0.12]:
-		b.box(Vector3(x, 0.012, 0.72), Vector3(0.09, 0.02, 0.25), Tile.WOOD_DARK, Basis(Vector3.UP, x))
-		b.box(Vector3(x, 0.03, 0.66), Vector3(0.1, 0.02, 0.02), Tile.SACK)
-	return b.commit()
-
-
-## Пустая одежда: человек стоял — и исчез; одежда осела кучкой, сандалии стоят рядом, как на ногах.
-static func _make_clothes_fallen() -> Mesh:
-	var b := PB.new()
-	b.lathe([Vector2(0, 0), Vector2(0.4, 0.0), Vector2(0.3, 0.07), Vector2(0.16, 0.14), Vector2(0, 0.16)], 7, Tile.LINEN,
-		Vector3(0, 0, -0.05), Basis(Vector3.UP, 0.5), Vector2(1.0, 0.8))
-	b.lathe([Vector2(0, 0), Vector2(0.48, 0.0), Vector2(0.42, 0.03), Vector2(0, 0.05)], 7, Tile.CLOTH_BLUE, Vector3(0.05, 0, 0.0),
-		Basis(Vector3.UP, 1.2), Vector2(1.0, 0.7))
-	b.box(Vector3(0.1, 0.17, -0.05), Vector3(0.5, 0.02, 0.04), Tile.WOOD_DARK, Basis(Vector3.UP, 0.7))
-	for x in [-0.1, 0.1]:
-		b.box(Vector3(x, 0.012, 0.32), Vector3(0.09, 0.02, 0.25), Tile.WOOD_DARK)
-		b.box(Vector3(x, 0.03, 0.26), Vector3(0.1, 0.02, 0.02), Tile.SACK)
-	return b.commit()
-
-
-## Погребальная пелена: зацепилась за угол на высоте ~1 м и тянется по улице (по −Z) на 3 м.
-static func _make_shroud_strip() -> Mesh:
-	var b := PB.new()
-	var w := 0.16
-	var pts := [Vector3(0.0, 1.05, 0.0), Vector3(0.05, 0.6, -0.25), Vector3(0.08, 0.06, -0.6), Vector3(0.0, 0.015, -1.2),
-		Vector3(-0.12, 0.015, -1.9), Vector3(-0.05, 0.015, -2.5), Vector3(0.1, 0.015, -3.0)]
-	for i in pts.size() - 1:
-		var a: Vector3 = pts[i]
-		var c: Vector3 = pts[i + 1]
-		var wa := w * (1.0 - i * 0.06)
-		var wc := w * (1.0 - (i + 1) * 0.06)
-		b.quad(Vector3(a.x - wa, a.y, a.z), Vector3(a.x + wa, a.y, a.z), Vector3(c.x + wc, c.y, c.z), Vector3(c.x - wc, c.y, c.z),
-			Tile.SHROUD, true)
-	# Узел на углу
-	b.box(Vector3(0, 1.08, 0.02), Vector3(0.14, 0.1, 0.06), Tile.SHROUD)
-	return b.commit()
-
-
-## Белая погребальная пыль на мостовой и цепочка следов босых ног из неё (по −Z).
-static func _make_burial_dust() -> Mesh:
-	var b := PB.new()
-	_blob(b, Vector3(0, 0.011, 0.6), 0.7, 0.5, Tile.DUST, 71, 10)
-	_blob(b, Vector3(0.5, 0.011, 1.1), 0.25, 0.2, Tile.DUST, 72, 7)
-	for i in 7:
-		var side := -1.0 if i % 2 else 1.0
-		var c := Vector3(side * 0.13 + i * 0.03, 0.013, 0.1 - i * 0.55)
-		# Босая ступня: пятка, свод и пальцы
-		b.box(c, Vector3(0.08, 0.002, 0.12), Tile.DUST)
-		b.box(c + Vector3(side * 0.01, 0, -0.11), Vector3(0.09, 0.002, 0.09), Tile.DUST)
-		for t in 4:
-			b.box(c + Vector3(-0.03 + t * 0.02, 0, -0.18), Vector3(0.014, 0.002, 0.02), Tile.DUST)
-	return b.commit()
-
-
 ## Стол 0,7 м, опрокинутый ножками вверх.
 static func _make_table_overturned() -> Mesh:
 	var b := PB.new()
@@ -1245,22 +1103,6 @@ static func _make_table_overturned() -> Mesh:
 	for p in [Vector2(-0.48, -0.26), Vector2(0.48, -0.26), Vector2(0.48, 0.26)]:
 		b.box(Vector3(p.x, 0.38, p.y), Vector3(0.06, 0.66, 0.06), Tile.WOOD_DARK)
 	b.box(Vector3(-0.7, 0.03, 0.4), Vector3(0.06, 0.06, 0.66), Tile.WOOD_DARK, Basis(Vector3.UP, 0.9))
-	return b.commit()
-
-
-## Опрокинутая жаровня: тренога на боку, чаша лицом вниз, угли рассыпаны (огоньки — из KINDS).
-static func _make_brazier_overturned() -> Mesh:
-	var b := PB.new()
-	var tip := Basis(Vector3.BACK, PI * 0.5 - 0.2)
-	for i in 3:
-		var a := TAU * i / 3.0
-		b.box(tip * Vector3(cos(a) * 0.2, 0.42, sin(a) * 0.2) + Vector3(0, 0.25, 0), Vector3(0.04, 0.9, 0.04), Tile.IRON, tip)
-	b.lathe([Vector2(0.08, 0.82), Vector2(0.3, 0.9), Vector2(0.34, 1.02), Vector2(0.3, 1.0), Vector2(0, 0.95)], 8, Tile.IRON,
-		Vector3(1.0, 0.25, 0), tip)
-	var rng := _rng(73)
-	for i in 10:
-		b.box(Vector3(rng.randf_range(0.2, 1.0), 0.02, rng.randf_range(-0.4, 0.4)), Vector3(0.06, 0.04, 0.05), Tile.BASALT,
-			Basis(Vector3.UP, rng.randf() * PI))
 	return b.commit()
 
 
@@ -1353,4 +1195,614 @@ static func _make_beam_leaning() -> Mesh:
 	var basis := Basis.looking_at(d.normalized(), Vector3.UP)
 	b.box((a + c) * 0.5, Vector3(0.2, 0.18, d.length()), Tile.WOOD_DARK, basis)
 	b.box(Vector3(-1.2, 1.15, 0.25), Vector3(0.9, 0.12, 0.6), Tile.STONE, Basis(Vector3.BACK, 0.3))
+	return b.commit()
+
+
+# ─── Люди: фигуры в позах (тела, сидящий солдат) ─────────────────────────────
+
+## Звено тела (рука, нога, шея): брусок от a до c сечением r×r, чуть заходит в суставы.
+static func _limb(b: PB, a: Vector3, c: Vector3, r: float, tile: int) -> void:
+	var d := c - a
+	var up := Vector3.UP if absf(d.normalized().y) < 0.95 else Vector3.FORWARD
+	b.box((a + c) * 0.5, Vector3(r, r, d.length() + r * 0.4), tile, Basis.looking_at(d.normalized(), up))
+
+
+## Шар (голова, кулак): тело вращения из 5 колец.
+static func _ball(b: PB, c: Vector3, r: float, tile: int, scale_xz := Vector2.ONE) -> void:
+	b.lathe([Vector2(0, -r), Vector2(r * 0.7, -r * 0.7), Vector2(r, 0), Vector2(r * 0.7, r * 0.7), Vector2(0, r)], 6, tile,
+		c, Basis(), scale_xz)
+
+
+## Фигура человека по суставам j (словарь точек): туловище в тунике, руки и ноги, голова с волосами, ступни.
+## tunic — плитка туники, skin — открытых рук и ног (у накрытого тела — тоже ткань).
+static func _figure(b: PB, j: Dictionary, tunic: int, skin: int = Tile.SKIN, feet: int = Tile.WOOD_DARK) -> void:
+	var hip: Vector3 = j.hip
+	var neck: Vector3 = j.neck
+	var axis := (neck - hip).normalized()
+	var lat := ((j.sr as Vector3) - (j.sl as Vector3))
+	lat = (lat - axis * lat.dot(axis)).normalized()
+	var basis := Basis(lat, axis, lat.cross(axis))
+	# Туловище с подолом туники до середины бедра
+	var low := hip - axis * 0.22
+	b.box((low + neck) * 0.5, Vector3(0.36, (neck - low).length(), 0.22), tunic, basis)
+	_limb(b, neck, (j.head as Vector3), 0.09, skin)
+	_ball(b, j.head, 0.11, skin)
+	if skin == Tile.SKIN:
+		# Волосы — шапочкой на затылке
+		_ball(b, (j.head as Vector3) - basis.z * 0.025 + axis * 0.02, 0.1, Tile.HAIR)
+	for s in ["l", "r"]:
+		var sh: Vector3 = j["s" + s]
+		var el: Vector3 = j["e" + s]
+		var ha: Vector3 = j["h" + s]
+		# Короткий рукав туники, потом голая рука и кисть
+		_limb(b, sh, sh.lerp(el, 0.45), 0.12, tunic)
+		_limb(b, sh.lerp(el, 0.4), el, 0.085, skin)
+		_limb(b, el, ha, 0.075, skin)
+		_ball(b, ha + (ha - el).normalized() * 0.05, 0.05, skin)
+		var hp: Vector3 = j["p" + s]
+		var kn: Vector3 = j["k" + s]
+		var ft: Vector3 = j["f" + s]
+		_limb(b, hp, kn, 0.13, skin)
+		_limb(b, kn, ft, 0.1, skin)
+		var fwd: Vector3 = j.get("toes", Vector3.FORWARD)
+		var up := Vector3.UP if absf(fwd.y) < 0.95 else Vector3.BACK
+		b.box(ft + fwd * 0.07 + Vector3.DOWN * 0.03, Vector3(0.1, 0.06, 0.24), feet, Basis.looking_at(fwd, up))
+
+
+## Человек в дверном проёме: лежит ничком головой на улицу (−Z), правая рука тянется вперёд, на улицу.
+## Точка — порог; ноги — в доме (+Z).
+static func _make_body_doorway() -> Mesh:
+	var b := PB.new()
+	_figure(b, {
+		"hip": Vector3(0.0, 0.12, 0.45), "neck": Vector3(0.0, 0.13, -0.15), "head": Vector3(0.05, 0.13, -0.32),
+		"sl": Vector3(-0.2, 0.12, -0.1), "sr": Vector3(0.2, 0.12, -0.1),
+		"el": Vector3(-0.38, 0.08, 0.05), "hl": Vector3(-0.32, 0.05, -0.2),
+		"er": Vector3(0.26, 0.08, -0.45), "hr": Vector3(0.22, 0.05, -0.78),
+		"pl": Vector3(-0.1, 0.12, 0.5), "kl": Vector3(-0.12, 0.08, 0.92), "fl": Vector3(-0.16, 0.09, 1.3),
+		"pr": Vector3(0.1, 0.12, 0.5), "kr": Vector3(0.16, 0.08, 0.92), "fr": Vector3(0.24, 0.09, 1.28),
+		"toes": Vector3.DOWN.lerp(Vector3.BACK, 0.5).normalized(),
+	}, Tile.LINEN)
+	return b.commit()
+
+
+## Тело солдата: лежит на боку, поджав ноги, в тёмно-красной тунике и калигах.
+static func _make_body_soldier() -> Mesh:
+	var b := PB.new()
+	_figure(b, {
+		"hip": Vector3(0.3, 0.2, 0.0), "neck": Vector3(-0.3, 0.22, 0.05), "head": Vector3(-0.47, 0.17, 0.1),
+		"sl": Vector3(-0.25, 0.07, 0.03), "sr": Vector3(-0.25, 0.37, 0.03),
+		"el": Vector3(-0.45, 0.05, -0.22), "hl": Vector3(-0.7, 0.05, -0.25),
+		"er": Vector3(-0.08, 0.3, -0.25), "hr": Vector3(0.12, 0.2, -0.33),
+		"pl": Vector3(0.33, 0.12, 0.0), "kl": Vector3(0.62, 0.08, -0.32), "fl": Vector3(1.0, 0.08, -0.08),
+		"pr": Vector3(0.33, 0.28, 0.0), "kr": Vector3(0.6, 0.25, -0.38), "fr": Vector3(0.96, 0.2, -0.22),
+		"toes": Vector3.FORWARD,
+	}, Tile.CLOTH_RED)
+	return b.commit()
+
+
+## Солдат сидит у стены (точка у стены, тело в −Z): спиной к стене, голова упала на грудь, одна нога согнута,
+## в опущенной правой руке — погасший светильник.
+static func _make_soldier_sitting() -> Mesh:
+	var b := PB.new()
+	_figure(b, {
+		"hip": Vector3(0.0, 0.16, -0.3), "neck": Vector3(0.02, 0.7, -0.14), "head": Vector3(0.1, 0.8, -0.26),
+		"sl": Vector3(-0.2, 0.64, -0.15), "sr": Vector3(0.2, 0.64, -0.15),
+		"el": Vector3(-0.3, 0.42, -0.3), "hl": Vector3(-0.17, 0.44, -0.58),
+		"er": Vector3(0.32, 0.36, -0.24), "hr": Vector3(0.33, 0.1, -0.44),
+		"pl": Vector3(-0.1, 0.16, -0.32), "kl": Vector3(-0.15, 0.44, -0.66), "fl": Vector3(-0.18, 0.08, -0.95),
+		"pr": Vector3(0.1, 0.16, -0.32), "kr": Vector3(0.15, 0.17, -0.76), "fr": Vector3(0.22, 0.09, -1.15),
+		"toes": Vector3.FORWARD,
+	}, Tile.CLOTH_RED)
+	# Погасший светильник в руке, наклонён — масло вытекло тёмным пятном
+	b.lathe([Vector2(0, 0), Vector2(0.04, 0), Vector2(0.05, 0.02), Vector2(0.022, 0.038), Vector2(0, 0.033)], 6, Tile.CLAY,
+		Vector3(0.36, 0.03, -0.53), Basis(Vector3.BACK, 0.4))
+	_blob(b, Vector3(0.42, 0.012, -0.62), 0.12, 0.08, Tile.SOOT, 91, 7)
+	return b.commit()
+
+
+## Тело, накрытое тканью: под полотном читаются голова, плечи, руки вдоль тела; босые ступни торчат наружу.
+static func _make_body() -> Mesh:
+	var b := PB.new()
+	_figure(b, {
+		"hip": Vector3(0.0, 0.16, 0.3), "neck": Vector3(0.0, 0.17, -0.3), "head": Vector3(0.0, 0.17, -0.48),
+		"sl": Vector3(-0.21, 0.16, -0.25), "sr": Vector3(0.21, 0.16, -0.25),
+		"el": Vector3(-0.28, 0.13, 0.0), "hl": Vector3(-0.28, 0.11, 0.3),
+		"er": Vector3(0.28, 0.13, 0.0), "hr": Vector3(0.28, 0.11, 0.3),
+		"pl": Vector3(-0.1, 0.15, 0.35), "kl": Vector3(-0.11, 0.13, 0.78), "fl": Vector3(-0.12, 0.11, 1.15),
+		"pr": Vector3(0.1, 0.15, 0.35), "kr": Vector3(0.11, 0.13, 0.78), "fr": Vector3(0.12, 0.11, 1.15),
+		"toes": Vector3.UP,
+	}, Tile.LINEN, Tile.LINEN, Tile.SKIN)
+	# Край полотна лёг складками на землю вокруг тела
+	_lump(b, Vector3(-0.38, 0.0, 0.1), 0.14, 0.55, 0.08, Tile.LINEN, 127, 7)
+	_lump(b, Vector3(0.38, 0.0, -0.1), 0.13, 0.5, 0.07, Tile.LINEN, 128, 7)
+	return b.commit()
+
+
+# ─── Пустая одежда ───────────────────────────────────────────────────────────
+
+## Смятый ком ткани: неровные кольца с разным радиусом по сторонам (складки), сверху — веер.
+static func _lump(b: PB, c: Vector3, rx: float, rz: float, h: float, tile: int, seed: int, sides: int = 8) -> void:
+	var rng := _rng(seed)
+	var rings := [[0.0, 1.0], [0.45, 0.85], [0.85, 0.45], [1.0, 0.0]]
+	var pts := []
+	for ring in rings:
+		var row := []
+		for i in sides:
+			var a := TAU * i / sides
+			var k: float = ring[1] * rng.randf_range(0.7, 1.15)
+			var y: float = c.y + h * ring[0] * rng.randf_range(0.85, 1.1)
+			row.append(Vector3(c.x + cos(a) * rx * k, y, c.z + sin(a) * rz * k))
+		pts.append(row)
+	for k in rings.size() - 1:
+		for i in sides:
+			var a0: Vector3 = pts[k][i]
+			var a1: Vector3 = pts[k][(i + 1) % sides]
+			var b0: Vector3 = pts[k + 1][i]
+			var b1: Vector3 = pts[k + 1][(i + 1) % sides]
+			b.quad(b1, b0, a0, a1, tile)
+
+
+## Сандалия, стоящая на подошве, с ремешками вокруг пустого места, где была стопа.
+static func _sandal(b: PB, at: Vector3, yaw: float) -> void:
+	var basis := Basis(Vector3.UP, yaw)
+	b.box(at + basis * Vector3(0, 0.01, 0), Vector3(0.09, 0.02, 0.24), Tile.WOOD_DARK, basis)
+	# Ремешки — тонкие дуги поперёк, задник у пятки
+	b.box(at + basis * Vector3(0, 0.035, -0.05), Vector3(0.095, 0.01, 0.025), Tile.SACK, basis)
+	b.box(at + basis * Vector3(0, 0.04, 0.04), Vector3(0.095, 0.01, 0.025), Tile.SACK, basis)
+	b.box(at + basis * Vector3(0, 0.04, 0.11), Vector3(0.08, 0.04, 0.012), Tile.SACK, basis)
+
+
+## Пустая одежда: человек стоял — и исчез. Туника осела кучкой, рукав вытянут, пояс сполз,
+## плащ раскинулся; сандалии стоят там, где были ноги.
+static func _make_clothes_fallen() -> Mesh:
+	var b := PB.new()
+	_lump(b, Vector3(0.12, 0.0, 0.05), 0.5, 0.36, 0.06, Tile.CLOTH_BLUE, 93, 9)
+	_lump(b, Vector3(0.0, 0.0, 0.0), 0.3, 0.24, 0.2, Tile.LINEN, 94)
+	_lump(b, Vector3(-0.08, 0.1, -0.04), 0.17, 0.14, 0.13, Tile.LINEN, 95, 6)
+	# Рукав вытянут по земле
+	_limb(b, Vector3(0.18, 0.08, -0.12), Vector3(0.62, 0.04, -0.34), 0.1, Tile.LINEN)
+	_limb(b, Vector3(0.6, 0.04, -0.33), Vector3(0.74, 0.03, -0.38), 0.08, Tile.LINEN)
+	# Пояс сполз с кучки на землю
+	b.box(Vector3(-0.1, 0.17, 0.12), Vector3(0.3, 0.025, 0.05), Tile.WOOD_DARK, Basis(Vector3.UP, 0.5) * Basis(Vector3.BACK, 0.4))
+	b.box(Vector3(-0.32, 0.03, 0.2), Vector3(0.3, 0.02, 0.05), Tile.WOOD_DARK, Basis(Vector3.UP, -0.3))
+	# Сандалии — на месте ступней, носками вперёд, из-под края ткани
+	_sandal(b, Vector3(-0.1, 0.0, 0.22), 0.1)
+	_sandal(b, Vector3(0.12, 0.0, 0.24), -0.15)
+	return b.commit()
+
+
+## Пустая одежда: человек лежал — и растворился. Туника складками по силуэту тела, рукав откинут,
+## пояс на месте талии, сандалии стоят у подола, где были ступни. Головы нет — пустое место.
+static func _make_clothes_lying() -> Mesh:
+	var b := PB.new()
+	# Туника — одно длинное пологое полотно по силуэту (+Z — к ногам), поверх — складки-заломы
+	_lump(b, Vector3(0.0, 0.0, 0.0), 0.32, 0.62, 0.06, Tile.CLOTH_RED, 96, 12)
+	_lump(b, Vector3(0.03, 0.03, -0.3), 0.2, 0.22, 0.06, Tile.CLOTH_RED, 97, 7)
+	for f in [[Vector3(-0.15, 0.06, -0.1), Vector3(0.05, 0.05, 0.35)], [Vector3(0.12, 0.06, -0.05), Vector3(0.18, 0.04, 0.45)],
+			[Vector3(-0.2, 0.05, 0.2), Vector3(-0.1, 0.04, 0.55)]]:
+		_limb(b, f[0], f[1], 0.05, Tile.CLOTH_RED)
+	# Рукава: один вдоль тела, другой откинут в сторону
+	_limb(b, Vector3(-0.27, 0.05, -0.4), Vector3(-0.3, 0.03, -0.08), 0.1, Tile.CLOTH_RED)
+	_limb(b, Vector3(0.26, 0.05, -0.42), Vector3(0.58, 0.03, -0.55), 0.1, Tile.CLOTH_RED)
+	# Пояс на талии, чуть провис
+	b.box(Vector3(0.0, 0.085, 0.12), Vector3(0.48, 0.02, 0.05), Tile.WOOD_DARK, Basis(Vector3.UP, 0.08))
+	_sandal(b, Vector3(-0.1, 0.0, 0.78), 0.05)
+	_sandal(b, Vector3(0.13, 0.0, 0.8), -0.12)
+	return b.commit()
+
+
+# ─── Римское ─────────────────────────────────────────────────────────────────
+
+## Плоский овальный щит ауксилия 1,1×0,6 м: окрашенная кожа на досках, железный умбон, окантовка, вмятины.
+## Свой каркас: длинная ось — Z, лицо — +Y.
+static func _shield_body(b: PB, seed: int) -> void:
+	var rng := _rng(seed)
+	var sides := 12
+	var rings := [0.0, 0.45, 0.8, 1.0]
+	var pts := []
+	for k in rings.size():
+		var row := []
+		for i in sides:
+			var a := TAU * i / sides
+			var r: float = rings[k]
+			var bulge := 0.05 * (1.0 - r * r)
+			if k > 0 and rng.randf() < 0.25:
+				bulge -= 0.025
+			row.append(Vector3(cos(a) * 0.3 * r, bulge, sin(a) * 0.55 * r))
+		pts.append(row)
+	for k in rings.size() - 1:
+		for i in sides:
+			var a0: Vector3 = pts[k][i]
+			var a1: Vector3 = pts[k][(i + 1) % sides]
+			var c0: Vector3 = pts[k + 1][i]
+			var c1: Vector3 = pts[k + 1][(i + 1) % sides]
+			b.quad(c0, c1, a1, a0, Tile.CLOTH_RED)
+			# Изнанка — доски
+			b.quad(a0 - Vector3(0, 0.02, 0), a1 - Vector3(0, 0.02, 0), c1 - Vector3(0, 0.02, 0), c0 - Vector3(0, 0.02, 0), Tile.WOOD)
+	# Окантовка по краю
+	for i in sides:
+		var p0: Vector3 = pts[3][i]
+		var p1: Vector3 = pts[3][(i + 1) % sides]
+		var d := p1 - p0
+		b.box((p0 + p1) * 0.5 + Vector3(0, -0.005, 0), Vector3(0.025, 0.035, d.length() + 0.02), Tile.METAL,
+			Basis.looking_at(d.normalized(), Vector3.UP))
+	# Ребро-спина и железный умбон
+	b.box(Vector3(0, 0.05, 0), Vector3(0.04, 0.02, 1.0), Tile.WOOD_DARK)
+	b.lathe([Vector2(0.11, 0.0), Vector2(0.1, 0.035), Vector2(0.06, 0.07), Vector2(0, 0.08)], 8, Tile.IRON, Vector3(0, 0.045, 0))
+
+
+## Щит лежит под углом: одним краем на земле, другим на камне.
+static func _make_shield() -> Mesh:
+	var b := PB.new()
+	b.box(Vector3(0.28, 0.07, 0.1), Vector3(0.18, 0.14, 0.16), Tile.STONE, Basis(Vector3.UP, 0.4))
+	b.xf = Transform3D(Basis(Vector3.BACK, 0.3) * Basis(Vector3.UP, 0.15), Vector3(0.0, 0.1, 0.0))
+	_shield_body(b, 101)
+	return b.commit()
+
+
+## Щит прислонён к стене (точка у стены, лицо щита — в −Z), низ на земле.
+static func _make_shield_leaning() -> Mesh:
+	var b := PB.new()
+	var front := Vector3(0, 0.26, -1).normalized()
+	var x := Vector3.RIGHT
+	b.xf = Transform3D(Basis(x, front, x.cross(front)), Vector3(0, 0.55, -0.2))
+	_shield_body(b, 103)
+	return b.commit()
+
+
+## Сломанное копьё: древко переломлено, наконечник с обломком лежит отдельно.
+static func _make_spear_broken() -> Mesh:
+	var b := PB.new()
+	b.box(Vector3(0, 0.025, 0.3), Vector3(0.04, 0.04, 1.2), Tile.WOOD, Basis(Vector3.UP, 0.1))
+	b.box(Vector3(0.05, 0.03, -0.32), Vector3(0.02, 0.02, 0.12), Tile.WOOD, Basis(Vector3.UP, 0.5))
+	var head := Basis(Vector3.UP, -0.7)
+	b.box(Vector3(0.4, 0.025, -0.55), Vector3(0.04, 0.04, 0.45), Tile.WOOD, head)
+	b.box(Vector3(0.4, 0.02, -0.55) + head * Vector3(0, 0, -0.32), Vector3(0.06, 0.015, 0.25), Tile.IRON, head)
+	return b.commit()
+
+
+## Жаровня опрокинута: тренога на боку, чаша лежит рядом, угли и зола рассыпаны веером (тлеющие — огоньки из KINDS).
+static func _make_brazier_overturned() -> Mesh:
+	var b := PB.new()
+	# Тренога на боку: три ножки и кольцо
+	var tip := Basis(Vector3.BACK, PI * 0.5)
+	for i in 3:
+		var a := TAU * i / 3.0
+		var foot := Vector3(-0.85, 0.2 + sin(a) * 0.17, cos(a) * 0.42)
+		_limb(b, foot, Vector3(-0.1, 0.2 + sin(a) * 0.12, cos(a) * 0.12), 0.035, Tile.IRON)
+	b.lathe([Vector2(0.12, -0.02), Vector2(0.15, -0.02), Vector2(0.15, 0.02), Vector2(0.12, 0.02)], 8, Tile.IRON,
+		Vector3(-0.1, 0.2, 0.0), tip)
+	# Чаша на боку, отверстием к углям
+	b.lathe([Vector2(0.06, 0.0), Vector2(0.26, 0.06), Vector2(0.3, 0.17), Vector2(0.27, 0.17), Vector2(0, 0.12)], 9, Tile.IRON,
+		Vector3(0.15, 0.28, -0.05), Basis(Vector3.BACK, -PI * 0.5 + 0.25))
+	# Зола и угли веером
+	_blob(b, Vector3(0.55, 0.008, 0.0), 0.45, 0.32, Tile.BASALT, 105, 9)
+	var rng := _rng(106)
+	for i in 12:
+		b.box(Vector3(rng.randf_range(0.3, 0.9), 0.02, rng.randf_range(-0.3, 0.3)), Vector3(0.045, 0.03, 0.04),
+			Tile.SOOT if i % 3 else Tile.CLAY_DARK, Basis(Vector3.UP, rng.randf() * PI))
+	return b.commit()
+
+
+## Тлеющая жаровня (брошенный пост): та же тренога, вместо пламени угли — огоньки поменьше.
+static func _make_brazier_smoldering() -> Mesh:
+	return _make_brazier()
+
+
+# ─── Кровь ───────────────────────────────────────────────────────────────────
+
+## Лужа крови: неровная, тёмная, почти чёрная в середине; кровь затекла в швы плит — тонкие прямые подтёки.
+static func _make_blood_pool() -> Mesh:
+	var b := PB.new()
+	_blob(b, Vector3(0, 0.011, 0), 0.5, 0.36, Tile.BLOOD_DARK, 61, 13)
+	_blob(b, Vector3(0.04, 0.014, 0.02), 0.34, 0.24, Tile.BLOOD_BLACK, 62, 10)
+	_blob(b, Vector3(0.38, 0.011, 0.2), 0.14, 0.1, Tile.BLOOD_DARK, 63, 7)
+	# Подтёки по швам плит: короткие узкие языки вдоль осей, от края лужи наружу, сходят на нет
+	var rng := _rng(64)
+	for i in 5:
+		var along_x := i % 2 == 0
+		var sgn := 1.0 if i < 3 else -1.0
+		var len := rng.randf_range(0.18, 0.35)
+		var edge := Vector3(0.45 * sgn, 0, rng.randf_range(-0.15, 0.15)) if along_x else Vector3(rng.randf_range(-0.25, 0.25), 0, 0.32 * sgn)
+		var c := edge + (Vector3(len * 0.5 * sgn, 0.012, 0) if along_x else Vector3(0, 0.012, len * 0.5 * sgn))
+		_blob(b, c, len * 0.5 if along_x else 0.014, 0.014 if along_x else len * 0.5, Tile.BLOOD_DARK, 130 + i, 6)
+	return b.commit()
+
+
+## Брызги на стене (точка у стены, смотрит в −Z): россыпь мелких капель вокруг места удара и тонкие потёки вниз.
+static func _make_blood_splatter() -> Mesh:
+	var b := PB.new()
+	b.xf = Transform3D(Basis(Vector3.UP, PI), Vector3.ZERO)
+	var rng := _rng(67)
+	var hit := Vector2(0.0, 1.3)
+	_blob_v(b, hit, 0.05, 0.04, 0.006, Tile.BLOOD_DARK, 74, 7)
+	for i in 34:
+		var a := rng.randf_range(-PI * 0.3, PI * 1.3)
+		var d := rng.randf_range(0.06, 0.5) * rng.randf_range(0.5, 1.0)
+		var c := hit + Vector2(cos(a) * d * 1.3, sin(a) * d * 0.8)
+		var s := rng.randf_range(0.006, 0.02) * (1.0 - d)
+		_blob_v(b, c, s, s * rng.randf_range(0.7, 1.3), 0.006, Tile.BLOOD_DARK if i % 3 else Tile.BLOOD, 75 + i, 5)
+	# Потёки вниз от места удара и самых крупных капель
+	for i in 6:
+		var x := hit.x + rng.randf_range(-0.12, 0.12)
+		var top := hit.y + rng.randf_range(-0.04, 0.03)
+		var len := rng.randf_range(0.25, 0.75)
+		var w := rng.randf_range(0.005, 0.01)
+		b.quad(Vector3(x - w, top, 0.007), Vector3(x + w, top, 0.007), Vector3(x + w * 0.5, top - len, 0.007),
+			Vector3(x - w * 0.5, top - len, 0.007), Tile.BLOOD_DARK)
+		_blob_v(b, Vector2(x, top - len), w * 1.6, w * 2.0, 0.007, Tile.BLOOD_DARK, 120 + i, 5)
+	return b.commit()
+
+
+# ─── Паника и святые ─────────────────────────────────────────────────────────
+
+## Брошенные носилки: две жерди, провисшее полотно, один конец упал на землю.
+static func _make_litter() -> Mesh:
+	var b := PB.new()
+	var tilt := Basis(Vector3.RIGHT, 0.12)
+	for x in [-0.3, 0.3]:
+		b.box(Vector3(x, 0.17, 0), Vector3(0.05, 0.05, 2.2), Tile.WOOD, tilt)
+	for z in [-0.55, 0.55]:
+		b.box(tilt * Vector3(0, 0.19, z), Vector3(0.62, 0.04, 0.04), Tile.WOOD_DARK, tilt)
+	b.quad(tilt * Vector3(-0.28, 0.17, -0.7), tilt * Vector3(0.28, 0.17, -0.7), tilt * Vector3(0.28, 0.12, 0.7),
+		tilt * Vector3(-0.28, 0.12, 0.7), Tile.LINEN, true)
+	_lump(b, tilt * Vector3(0.05, 0.12, 0.2), 0.22, 0.3, 0.07, Tile.LINEN, 107, 7)
+	return b.commit()
+
+
+## Опрокинутый лоток: столешница на боку, ножки торчат, навес сорван и лежит, фрукты раскатились.
+static func _make_stall_overturned() -> Mesh:
+	var b := PB.new()
+	var tip := Basis(Vector3.RIGHT, PI * 0.5)
+	b.box(Vector3(0, 0.5, 0.0), Vector3(2.0, 0.06, 1.0), Tile.WOOD, tip)
+	for x in [-0.92, 0.92]:
+		for y in [0.1, 0.9]:
+			b.box(Vector3(x, y, -0.4), Vector3(0.07, 0.07, 0.8), Tile.WOOD_DARK)
+	b.quad(Vector3(-1.0, 0.03, -0.9), Vector3(1.1, 0.12, -0.8), Vector3(1.2, 0.02, -1.9), Vector3(-0.9, 0.04, -1.8), Tile.CLOTH_BLUE, true)
+	var rng := _rng(108)
+	for i in 10:
+		_ball(b, Vector3(rng.randf_range(-1.2, 1.2), 0.04, rng.randf_range(-1.6, -0.2)), 0.045,
+			Tile.CLOTH_RED if i % 2 else Tile.FOOD)
+	return b.commit()
+
+
+## Погребальная пелена: длинная льняная лента зацепилась за гвоздь на углу (~1 м) и тянется по улице
+## (по −Z) на 3 м, перекручиваясь.
+static func _make_shroud_strip() -> Mesh:
+	var b := PB.new()
+	b.box(Vector3(0, 1.08, 0.0), Vector3(0.02, 0.02, 0.08), Tile.IRON)
+	var pts := [Vector3(0.0, 1.07, -0.02), Vector3(0.02, 0.75, -0.08), Vector3(0.04, 0.35, -0.2), Vector3(0.06, 0.03, -0.5),
+		Vector3(0.0, 0.015, -0.9), Vector3(-0.12, 0.015, -1.4), Vector3(-0.08, 0.015, -1.9), Vector3(0.08, 0.015, -2.4),
+		Vector3(0.14, 0.015, -2.8), Vector3(0.05, 0.015, -3.1)]
+	for i in pts.size() - 1:
+		var a: Vector3 = pts[i]
+		var c: Vector3 = pts[i + 1]
+		var wa := 0.07 + 0.03 * sin(i * 1.7)
+		var wc := 0.07 + 0.03 * sin((i + 1) * 1.7)
+		b.quad(Vector3(a.x - wa, a.y, a.z), Vector3(a.x + wa, a.y, a.z), Vector3(c.x + wc, c.y, c.z), Vector3(c.x - wc, c.y, c.z),
+			Tile.SHROUD, true)
+	return b.commit()
+
+
+## Погребальная пыль: россыпь серо-белых пятен и цепочка босых следов из неё (по −Z), бледнеющих.
+static func _make_burial_dust() -> Mesh:
+	var b := PB.new()
+	var rng := _rng(71)
+	for i in 6:
+		_blob(b, Vector3(rng.randf_range(-0.4, 0.4), 0.011, 0.6 + rng.randf_range(-0.3, 0.3)), rng.randf_range(0.12, 0.3),
+			rng.randf_range(0.1, 0.22), Tile.DUST, 72 + i, 7)
+	# Дорожка рассыпанной пыли вдоль следов
+	for i in 12:
+		_blob(b, Vector3(rng.randf_range(-0.08, 0.15) + i * 0.015, 0.01, 0.2 - i * 0.32), rng.randf_range(0.1, 0.18),
+			rng.randf_range(0.12, 0.2), Tile.DUST, 140 + i, 6)
+	for i in 7:
+		var side := -1.0 if i % 2 else 1.0
+		var c := Vector3(side * 0.12 + i * 0.03, 0.013, 0.1 - i * 0.55)
+		# Босая ступня: пятка, свод и пальцы
+		_blob(b, c, 0.04, 0.06, Tile.DUST, 80 + i, 6)
+		_blob(b, c + Vector3(side * 0.01, 0, -0.11), 0.045, 0.05, Tile.DUST, 90 + i, 6)
+		for t in 4:
+			b.box(c + Vector3(-0.03 + t * 0.02, 0, -0.18), Vector3(0.014, 0.002, 0.02), Tile.DUST)
+	return b.commit()
+
+
+## Сброшенные погребальные пелены: длинные льняные ленты кольцами и комом на полу.
+static func _make_shroud_pile() -> Mesh:
+	var b := PB.new()
+	_lump(b, Vector3(0.0, 0.0, 0.0), 0.32, 0.25, 0.12, Tile.SHROUD, 111)
+	var rng := _rng(112)
+	for k in 3:
+		var prev := Vector3(rng.randf_range(-0.2, 0.2), 0.02, rng.randf_range(-0.1, 0.1))
+		var a := rng.randf() * TAU
+		for i in 8:
+			a += rng.randf_range(0.4, 0.9)
+			var next := prev + Vector3(cos(a), 0.0, sin(a)) * 0.22
+			next.y = 0.015 + (0.04 if i < 2 else 0.0)
+			b.quad(Vector3(prev.x - 0.05, prev.y, prev.z), Vector3(prev.x + 0.05, prev.y, prev.z),
+				Vector3(next.x + 0.05, next.y, next.z), Vector3(next.x - 0.05, next.y, next.z), Tile.SHROUD, true)
+			prev = next
+	return b.commit()
+
+
+## Надпись, процарапанная на штукатурке по-гречески: ΟΥΚ ΗΓΕΡΘΗ — «не воскрес» (переиначенное «Он воскрес»,
+## Мф 28:6). Светлые царапины, рядом следы пальцев и кровь. Точка у стены, смотрит в −Z.
+static func _make_graffiti_greek() -> Mesh:
+	var b := PB.new()
+	b.xf = Transform3D(Basis(Vector3.UP, PI), Vector3.ZERO)
+	var oct := []
+	for i in 9:
+		var a := TAU * i / 8.0 + PI / 8.0
+		oct.append(Vector2(0.5 + cos(a) * 0.5, 0.5 + sin(a) * 0.5))
+	var ring := []
+	for i in 8:
+		ring.append([oct[i], oct[i + 1]])
+	var letters := {
+		"Ο": ring,
+		"Υ": [[Vector2(0, 1), Vector2(0.5, 0.5)], [Vector2(1, 1), Vector2(0.5, 0.5)], [Vector2(0.5, 0.5), Vector2(0.5, 0)]],
+		"Κ": [[Vector2(0, 0), Vector2(0, 1)], [Vector2(0.9, 1), Vector2(0, 0.5)], [Vector2(0, 0.5), Vector2(0.9, 0)]],
+		"Η": [[Vector2(0, 0), Vector2(0, 1)], [Vector2(0.9, 0), Vector2(0.9, 1)], [Vector2(0, 0.5), Vector2(0.9, 0.5)]],
+		"Γ": [[Vector2(0, 0), Vector2(0, 1)], [Vector2(0, 1), Vector2(0.8, 1)]],
+		"Ε": [[Vector2(0, 0), Vector2(0, 1)], [Vector2(0, 1), Vector2(0.85, 1)], [Vector2(0, 0.5), Vector2(0.65, 0.5)],
+			[Vector2(0, 0), Vector2(0.85, 0)]],
+		"Ρ": [[Vector2(0, 0), Vector2(0, 1)], [Vector2(0, 1), Vector2(0.7, 1)], [Vector2(0.7, 1), Vector2(0.85, 0.82)],
+			[Vector2(0.85, 0.82), Vector2(0.85, 0.68)], [Vector2(0.85, 0.68), Vector2(0.7, 0.5)], [Vector2(0.7, 0.5), Vector2(0, 0.5)]],
+		"Θ": ring + [[Vector2(0.25, 0.5), Vector2(0.75, 0.5)]],
+	}
+	var rng := _rng(113)
+	var text := "ΟΥΚ ΗΓΕΡΘΗ"
+	var size := Vector2(0.13, 0.18)
+	var x := -0.72
+	var y := 1.42
+	for ch in text:
+		if ch == " ":
+			x += 0.1
+			continue
+		var tilt := rng.randf_range(-0.04, 0.04)
+		for seg: Array in letters[ch]:
+			var p0: Vector2 = seg[0]
+			var p1: Vector2 = seg[1]
+			var a := Vector2(x + p0.x * size.x, y + p0.y * size.y + p0.x * tilt)
+			var c := Vector2(x + p1.x * size.x, y + p1.y * size.y + p1.x * tilt)
+			_scratch(b, a, c, 0.018, Tile.DUST)
+		x += size.x + 0.045
+	# Царапины ногтями и кровь под надписью
+	for i in 4:
+		var sx := -0.2 + i * 0.035
+		_scratch(b, Vector2(sx, 1.3), Vector2(sx + 0.03, 0.85 + rng.randf() * 0.1), 0.006, Tile.BLOOD_DARK)
+	_hand(b, Vector2(0.38, 1.05), 0.3, 0.007, Tile.BLOOD_DARK)
+	return b.commit()
+
+
+## Царапина на вертикальной плоскости от a до c (лицом в +Z до разворота b.xf).
+static func _scratch(b: PB, a: Vector2, c: Vector2, w: float, tile: int) -> void:
+	var d := (c - a).normalized()
+	var n := Vector2(-d.y, d.x) * w * 0.5
+	var z := 0.006
+	# Порядок вершин — лицом в +Z при любом направлении штриха
+	var p := [a + n, c + n, c - n, a - n]
+	if (p[1] - p[0]).cross(p[3] - p[0]) > 0.0:
+		p = [a - n, c - n, c + n, a + n]
+	b.quad(Vector3(p[0].x, p[0].y, z), Vector3(p[1].x, p[1].y, z), Vector3(p[2].x, p[2].y, z), Vector3(p[3].x, p[3].y, z), tile, true)
+
+
+# ─── Маленькие истории: двор, очаг, игрушки, лестница ────────────────────────
+
+## Цистерна брошена: крышка сброшена, над устьем рама с перерезанной верёвкой; устье — тёмная дыра.
+## Ставится поверх цистерны (cistern).
+static func _make_rope_cut() -> Mesh:
+	var b := PB.new()
+	b.lathe([Vector2(0, 0.455), Vector2(0.37, 0.455), Vector2(0, 0.456)], 8, Tile.SOOT)
+	for x in [-0.62, 0.62]:
+		b.box(Vector3(x, 0.8, 0), Vector3(0.08, 1.6, 0.08), Tile.WOOD_DARK)
+	b.box(Vector3(0, 1.6, 0), Vector3(1.4, 0.08, 0.08), Tile.WOOD_DARK)
+	# Обрезок верёвки на перекладине с размочаленным концом
+	b.box(Vector3(0.05, 1.32, 0), Vector3(0.02, 0.5, 0.02), Tile.SACK)
+	b.box(Vector3(0.05, 1.06, 0), Vector3(0.035, 0.04, 0.035), Tile.SACK, Basis(Vector3.UP, 0.4))
+	# Крышка лежит на земле у цистерны
+	b.lathe([Vector2(0, 0.0), Vector2(0.4, 0.0), Vector2(0.4, 0.04), Vector2(0, 0.045)], 8, Tile.WOOD, Vector3(0.9, 0, 0.5))
+	return b.commit()
+
+
+## Опрокинутое ведро: кожаное ведро на боку, дужка, обрывок верёвки, мокрое тёмное пятно.
+static func _make_bucket() -> Mesh:
+	var b := PB.new()
+	_blob(b, Vector3(-0.25, 0.008, 0.0), 0.45, 0.3, Tile.SOOT, 115, 9)
+	b.lathe([Vector2(0, 0), Vector2(0.13, 0), Vector2(0.16, 0.3), Vector2(0.14, 0.3), Vector2(0.11, 0.03)], 8, Tile.WOOD_DARK,
+		Vector3(0.0, 0.15, 0.0), Basis(Vector3.BACK, PI * 0.5 - 0.1))
+	b.box(Vector3(0.28, 0.16, 0), Vector3(0.02, 0.02, 0.32), Tile.IRON)
+	b.box(Vector3(0.6, 0.012, 0.1), Vector3(0.5, 0.02, 0.02), Tile.SACK, Basis(Vector3.UP, 0.3))
+	return b.commit()
+
+
+## Детская глиняная свистулька-птичка.
+static func _make_toy_bird() -> Mesh:
+	var b := PB.new()
+	_ball(b, Vector3(0, 0.04, 0), 0.04, Tile.CLAY, Vector2(0.8, 1.5))
+	_ball(b, Vector3(0, 0.08, -0.05), 0.025, Tile.CLAY)
+	b.box(Vector3(0, 0.085, -0.08), Vector3(0.012, 0.01, 0.03), Tile.CLAY_DARK)
+	b.box(Vector3(0, 0.055, 0.07), Vector3(0.05, 0.01, 0.05), Tile.CLAY, Basis(Vector3.RIGHT, -0.4))
+	return b.commit()
+
+
+## Детская глиняная повозочка на двух колёсах с верёвочкой.
+static func _make_toy_cart() -> Mesh:
+	var b := PB.new()
+	b.box(Vector3(0, 0.07, 0), Vector3(0.12, 0.06, 0.2), Tile.CLAY)
+	for x in [-0.075, 0.075]:
+		b.lathe([Vector2(0, -0.01), Vector2(0.045, -0.01), Vector2(0.045, 0.01), Vector2(0, 0.01)], 7, Tile.CLAY_DARK,
+			Vector3(x, 0.045, 0.02), Basis(Vector3.BACK, PI * 0.5))
+	b.box(Vector3(0.02, 0.006, -0.25), Vector3(0.008, 0.008, 0.32), Tile.SACK, Basis(Vector3.UP, 0.2))
+	return b.commit()
+
+
+## Очаг: кольцо камней, зола, угли ещё тлеют (огоньки из KINDS); над ним вертел на рогатинах — жарили ягнёнка.
+static func _make_hearth_embers() -> Mesh:
+	var b := PB.new()
+	_blob(b, Vector3(0, 0.01, 0), 0.32, 0.32, Tile.BASALT, 117, 9)
+	for i in 9:
+		var a := TAU * i / 9.0
+		b.box(Vector3(cos(a) * 0.38, 0.06, sin(a) * 0.38), Vector3(0.16, 0.12, 0.13), Tile.STONE, Basis(Vector3.UP, a))
+	var rng := _rng(118)
+	for i in 8:
+		b.box(Vector3(rng.randf_range(-0.2, 0.2), 0.035, rng.randf_range(-0.2, 0.2)), Vector3(0.07, 0.05, 0.05),
+			Tile.SOOT if i % 2 else Tile.CLAY_DARK, Basis(Vector3.UP, rng.randf() * PI))
+	for x in [-0.55, 0.55]:
+		b.box(Vector3(x, 0.35, 0), Vector3(0.04, 0.7, 0.04), Tile.WOOD_DARK)
+		b.box(Vector3(x, 0.72, 0), Vector3(0.03, 0.12, 0.03), Tile.WOOD_DARK, Basis(Vector3.BACK, 0.5))
+	b.box(Vector3(0, 0.7, 0), Vector3(1.3, 0.025, 0.025), Tile.WOOD_DARK)
+	return b.commit()
+
+
+## Миска с недоеденной едой: глиняная миска, похлёбка, кусок лепёшки на краю.
+static func _make_bowl_food() -> Mesh:
+	var b := PB.new()
+	b.lathe([Vector2(0, 0), Vector2(0.06, 0), Vector2(0.11, 0.05), Vector2(0.12, 0.07), Vector2(0.1, 0.065)], 8, Tile.CLAY)
+	b.lathe([Vector2(0, 0.045), Vector2(0.1, 0.045), Vector2(0, 0.05)], 8, Tile.FOOD)
+	b.lathe([Vector2(0, 0), Vector2(0.06, 0), Vector2(0.065, 0.01), Vector2(0, 0.015)], 6, Tile.FOOD, Vector3(0.14, 0.0, 0.05),
+		Basis(Vector3.FORWARD, 0.2))
+	return b.commit()
+
+
+## Упавшая лестница: деревянная приставная лестница лежит от стены (точка у стены) по −Z, 3,6 м.
+static func _make_ladder_fallen() -> Mesh:
+	var b := PB.new()
+	for x in [-0.22, 0.22]:
+		b.box(Vector3(x, 0.04, -1.85), Vector3(0.06, 0.06, 3.6), Tile.WOOD)
+	for i in 10:
+		b.box(Vector3(0, 0.05, -0.2 - i * 0.36), Vector3(0.44, 0.035, 0.04), Tile.WOOD_DARK)
+	return b.commit()
+
+
+# ─── Зелень ──────────────────────────────────────────────────────────────────
+
+## Пучок сухой травы в щели у стены или между плит.
+static func _make_grass_tuft() -> Mesh:
+	var b := PB.new()
+	var rng := _rng(121)
+	for i in 6:
+		var a := TAU * i / 6.0 + rng.randf() * 0.5
+		var h := rng.randf_range(0.12, 0.26)
+		var tip := Vector3(cos(a) * 0.08, h, sin(a) * 0.08)
+		b.quad(Vector3(-0.015, 0, 0), Vector3(0.015, 0, 0), tip + Vector3(0.005, 0, 0), tip - Vector3(0.005, 0, 0),
+			Tile.GRASS if i % 3 else Tile.LEAF, true)
+	return b.commit()
+
+
+## Кустик у стены: несколько комков листвы и сухие стебли.
+static func _make_bush_small() -> Mesh:
+	var b := PB.new()
+	_lump(b, Vector3(0, 0, 0), 0.3, 0.25, 0.35, Tile.LEAF, 123, 7)
+	_lump(b, Vector3(0.18, 0.15, 0.05), 0.18, 0.16, 0.25, Tile.LEAF, 124, 6)
+	for i in 4:
+		var a := TAU * i / 4.0
+		b.quad(Vector3(cos(a) * 0.1 - 0.01, 0, sin(a) * 0.1), Vector3(cos(a) * 0.1 + 0.01, 0, sin(a) * 0.1),
+			Vector3(cos(a) * 0.35, 0.55, sin(a) * 0.35), Vector3(cos(a) * 0.34, 0.55, sin(a) * 0.35), Tile.GRASS, true)
+	return b.commit()
+
+
+## Горшок с травами на крыше.
+static func _make_herb_pot() -> Mesh:
+	var b := PB.new()
+	b.lathe([Vector2(0, 0), Vector2(0.12, 0), Vector2(0.16, 0.2), Vector2(0.18, 0.24), Vector2(0.15, 0.24), Vector2(0, 0.2)], 7, Tile.CLAY)
+	_lump(b, Vector3(0, 0.2, 0), 0.17, 0.17, 0.22, Tile.LEAF, 125, 6)
 	return b.commit()

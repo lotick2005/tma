@@ -38,6 +38,7 @@ var _is_day := false
 
 func _ready() -> void:
 	GameState.current_level = "level_1"
+	PropRegistry.clear()
 	_make_materials()
 	_plaza_y = WorldCoords.gy(D.PLAZA.h)
 	_wall_top = _plaza_y + D.TEMPLE_WALL.height
@@ -108,10 +109,12 @@ func _make_materials() -> void:
 	_m.ashlar = PsxMaterial.make(ProcTextures.ashlar(128, 4, limestone, 11))
 	_m.slab = PsxMaterial.make(ProcTextures.ashlar(128, 3, Color(0.8, 0.77, 0.68), 12, 0, false, 0.4, 0.9, 0.2, 0.025))
 	_m.paving = PsxMaterial.make(ProcTextures.ashlar(64, 2, Color(0.7, 0.66, 0.58), 13, 0, false, 0.25, 0.6, 0.45, 0.05))
-	# Главная дорога — крупные светлые плиты; боковые переулки — тёмная мелкая мостовая; водосток — тёмные крышки
-	_m.paving_main = PsxMaterial.make(ProcTextures.ashlar(64, 2, Color(0.84, 0.8, 0.7), 15, 0, false, 0.3, 0.7, 0.3, 0.04))
+	# Главная дорога — крупные светлые плиты; боковые переулки — тёмная мелкая мостовая; водосток — тот же камень чуть темнее
+	var main_paving := ProcTextures.ashlar(64, 2, Color(0.84, 0.8, 0.7), 15, 0, false, 0.3, 0.7, 0.3, 0.04)
+	_m.paving_main = PsxMaterial.make(main_paving)
 	_m.paving_dark = PsxMaterial.make(ProcTextures.ashlar(64, 4, Color(0.48, 0.45, 0.4), 16, 0, false, 0.25, 0.55, 0.5, 0.06))
-	_m.gutter = PsxMaterial.make(ProcTextures.stripes(64, 8, Color(0.2, 0.19, 0.18), Color(0.34, 0.32, 0.3), 17))
+	_m.gutter = PsxMaterial.make(main_paving, Color(0.84, 0.82, 0.78))
+	_m.gutter_edge = PsxMaterial.make(main_paving, Color(0.62, 0.6, 0.56))
 	_m.lintel = PsxMaterial.make(ProcTextures.ashlar(64, 2, Color(0.82, 0.78, 0.68), 14, 2, true, 0.4, 0.8, 0.35, 0.04))
 	_m.plaster_a = PsxMaterial.make(ProcTextures.plaster(64, Color(0.84, 0.8, 0.7), 21))
 	_m.plaster_b = PsxMaterial.make(ProcTextures.plaster(64, Color(0.82, 0.74, 0.64), 22))
