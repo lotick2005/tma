@@ -3,7 +3,7 @@ extends CanvasLayer
 ## 0 — открыть / закрыть (курсор освобождается). Всё меняется вживую. Внизу — строка со всеми
 ## значениями: её можно выделить или скопировать кнопкой и прислать, чтобы вписать как значения по умолчанию.
 ## Ищет уровень через родителя: WorldEnvironment, Player (тело и светильник), солнце (если есть).
-## Если уровень умеет (toggle_day, cycle_sky) — кнопки «день / тьма» и «небо во тьме».
+## Если уровень умеет (toggle_day) — кнопка «день / тьма».
 
 const FONT_SIZE := 8
 
@@ -143,13 +143,6 @@ func _build() -> void:
 			_level.toggle_day()
 			_rebuild())
 		row.add_child(day_btn)
-		if not _level.is_day():
-			var sky_btn := Button.new()
-			sky_btn.text = "Небо: " + _level.sky_name()
-			sky_btn.pressed.connect(func() -> void:
-				_level.cycle_sky()
-				_rebuild())
-			row.add_child(sky_btn)
 
 	var hint := Label.new()
 	hint.text = "Строка значений (выдели или нажми «Копировать»):"

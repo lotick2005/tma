@@ -5,13 +5,11 @@ extends Resource
 ## Туман — глобальные параметры шейдеров psx_fog_* (CLAUDE.md §7). Днём небо — цвет тумана;
 ## во тьме небо почти чёрное, а дальние стены — силуэты цвета тумана на его фоне.
 
-## Что висит в небе во тьме (CLAUDE.md §7). Переключается в отладочной панели (клавиша 0).
+## Что висит в небе во тьме (CLAUDE.md §7).
 enum SkyBody {
 	NONE,
 	## Чёрный диск с бледной короной высоко в небе, как вечное полное затмение (Ам 8:9).
 	BLACK_SUN,
-	## Тусклый тёмно-красный диск низко над горизонтом в дымке (Иоиль 2:31).
-	BLOOD_MOON,
 }
 
 @export_group("Солнце")
@@ -42,17 +40,6 @@ enum SkyBody {
 @export var black_sun_light_color := Color(0.55, 0.62, 0.8)
 @export var black_sun_light_energy := 0.06
 
-@export_subgroup("Кровавая луна")
-@export_range(0.0, 90.0) var blood_moon_elevation := 12.0
-@export_range(-180.0, 180.0) var blood_moon_azimuth := -25.0
-@export var blood_moon_size := 11.0
-@export var blood_moon_color := Color(0.42, 0.07, 0.04)
-@export var blood_moon_light_color := Color(0.8, 0.18, 0.12)
-@export var blood_moon_light_energy := 0.35
-## Отсвет только на верхах стен: ниже light_from метров над землёй его нет, выше light_to — в полную силу.
-@export var blood_moon_light_from := 2.5
-@export var blood_moon_light_to := 6.0
-
 @export_group("Фоновый свет")
 @export var ambient_color := Color(0.75, 0.8, 0.9)
 @export var ambient_energy := 0.4
@@ -67,6 +54,7 @@ enum SkyBody {
 ## psx_light_max: сколько максимум даёт один источник света.
 @export var light_max := 0.9
 ## Дальность камеры, м. Должна быть больше fog_end, иначе край мира виден до тумана.
+## Во тьме — 240 м: силуэт Антонии и маяк на ней видны с площади (до них ~200 м).
 @export var camera_far := 130.0
 
 
@@ -89,27 +77,12 @@ func apply(env: Environment, sun: DirectionalLight3D, camera: Camera3D = null, s
 		match sky_body:
 			SkyBody.BLACK_SUN:
 				_set_light(sun, true, black_sun_light_color, black_sun_light_energy, black_sun_elevation, black_sun_azimuth)
-			SkyBody.BLOOD_MOON:
-				_set_light(sun, true, blood_moon_light_color, blood_moon_light_energy, blood_moon_elevation, blood_moon_azimuth)
 			_:
 				_set_light(sun, sun_enabled, sun_color, sun_energy, -sun_pitch, sun_azimuth)
 	if sky and sky.has_method("show_body"):
 		sky.show_body(self)
 	if camera:
 		camera.far = camera_far
-	if dir_light_band().x < -100.0:
-		PsxMaterial.set_global("psx_dir_light_y0", -1000.0)
-		PsxMaterial.set_global("psx_dir_light_y1", -999.0)
-
-
-## Где направленный свет гаснет: (от, до) в метрах над землёй под игроком. x < −100 — светит везде.
-## Глобальные psx_dir_light_y0 / y1 уровень обновляет каждый кадр по высоте земли.
-func dir_light_band() -> Vector2:
-	if sky_body == SkyBody.BLOOD_MOON:
-		return Vector2(blood_moon_light_from, blood_moon_light_to)
-	return Vector2(-1000.0, -999.0)
-
-
 ## Направление на небесное тело (единичный вектор от наблюдателя).
 static func direction(elevation: float, azimuth: float) -> Vector3:
 	return Basis.from_euler(Vector3(deg_to_rad(-elevation), deg_to_rad(azimuth), 0.0)) * Vector3.BACK

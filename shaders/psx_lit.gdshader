@@ -5,8 +5,6 @@
 //   psx_affine_near — ближе этого расстояния (м) аффинность плавно гаснет, чтобы вплотную у стены не было каши;
 //   psx_fog_color, psx_fog_start, psx_fog_end — цвет тумана и где он начинается и где закрывает всё (м);
 //   psx_light_max   — сколько максимум даёт один источник света: вплотную к огню нет белого пятна;
-//   psx_dir_light_y0, psx_dir_light_y1 — направленный свет (небесное тело во тьме) гаснет ниже y0 и в полную силу
-//                     выше y1 (мировая высота, м): низкая кровавая луна подсвечивает только верха стен.
 shader_type spatial;
 render_mode specular_disabled;
 
@@ -17,8 +15,6 @@ global uniform vec4 psx_fog_color;
 global uniform float psx_fog_start;
 global uniform float psx_fog_end;
 global uniform float psx_light_max;
-global uniform float psx_dir_light_y0;
-global uniform float psx_dir_light_y1;
 
 uniform sampler2D albedo_texture : source_color, filter_nearest, repeat_enable, hint_default_white;
 uniform vec4 albedo_color : source_color = vec4(1.0);
@@ -33,11 +29,9 @@ uniform vec3 self_illum_color : source_color = vec3(1.0);
 varying vec3 affine_uv;
 varying float affine_k;
 varying float fog_k;
-varying float world_y;
 
 void vertex() {
 	vec3 view_pos = (MODELVIEW_MATRIX * vec4(VERTEX, 1.0)).xyz;
-	world_y = (MODEL_MATRIX * vec4(VERTEX, 1.0)).y;
 	vec4 clip = PROJECTION_MATRIX * vec4(view_pos, 1.0);
 	if (psx_snap_pixels > 0.0 && clip.w > 0.0) {
 		// NDC -1..1 → сетка с шагом psx_snap_pixels пикселей
@@ -68,9 +62,6 @@ void fragment() {
 void light() {
 	float ndl = clamp(dot(NORMAL, LIGHT), 0.0, 1.0);
 	vec3 c = LIGHT_COLOR / PI * ATTENUATION * ndl;
-	if (LIGHT_IS_DIRECTIONAL) {
-		c *= clamp((world_y - psx_dir_light_y0) / max(psx_dir_light_y1 - psx_dir_light_y0, 0.001), 0.0, 1.0);
-	}
 	float m = max(c.r, max(c.g, c.b));
 	DIFFUSE_LIGHT += c * min(1.0, psx_light_max / max(m, 0.0001));
 }

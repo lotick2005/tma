@@ -6,10 +6,15 @@ extends RefCounted
 ## соседствует с пустым, — как воксели: ни одной скрытой грани, рёбра по сетке 1 м без Т-стыков.
 ## Ступени, своды, двери, парапеты и мостки — отдельные детали поверх. Коллизии — те же отрезки,
 ## слитые в большие коробки, плюс наклонные пандусы под ступенями.
+## Главная дорога (+) — светлая мостовая с водостоком посередине; боковые переулки (.) — темнее.
 
-const WALLS := "#%V"
+const WALLS := "#%Vr"
 const ROOMS := "_:"
-const DOORS := "Ddxo"
+const DOORS := "DdxoBHc"
+## Закрытые двери: не пройти (c — занавесь у бедных: за ней завалено, тоже не пройти).
+const CLOSED_DOORS := "DBHc"
+## Земля улиц и дворов, по которой ходят.
+const OPEN_GROUND := ".+,*bo"
 ## Под крышей (внутренний свет): комнаты, подвал, лестница вниз.
 const INDOOR := "_:mM\\"
 ## Ниже всего строится земля, м под уровнем клетки.
@@ -111,7 +116,9 @@ func build() -> void:
 			_rt[i] = _roof_top_calc(c, r)
 			_style[i] = _wall_style_calc(c, r)
 	_b.local = true
+	_check_rooms()
 	_build_faces()
+	_build_gutters()
 	_flush_faces()
 	_build_collision()
 	_build_band_steps()
@@ -169,8 +176,10 @@ func _solids_calc(c: int, r: int) -> Variant:
 			return [Vector2(lo, deck_y)]
 		"_", ":":
 			return [Vector2(lo, g), Vector2(ceil_y, top)]
-		"D", "d", "x", "o":
+		"D", "d", "x", "o", "B", "H", "c":
 			return [Vector2(lo, g), Vector2(g + _cfg.door_height, top)]
+		"r":
+			return [Vector2(lo, g + _ruin_height(c, r))]
 		"m":
 			return [Vector2(lo, g - bd), Vector2(g - 0.25, g), Vector2(ceil_y, top)]
 		"M":
@@ -182,6 +191,12 @@ func _solids_calc(c: int, r: int) -> Variant:
 		_:
 			# Переулок, двор, завал, лестница, свод, лавка — только земля (остальное — отдельные детали)
 			return [Vector2(lo, g)]
+
+
+## Высота обломка стены рухнувшего дома (символ r): неровно, 1–3 м.
+static func _ruin_height(c: int, r: int) -> float:
+	var hsh := absi((c * 73856093) ^ (r * 19349663)) % 1000
+	return 1.0 + 2.0 * hsh / 1000.0
 
 
 static func _subtract(a: Array, b: Array) -> Array:
@@ -205,7 +220,13 @@ static func _subtract(a: Array, b: Array) -> Array:
 
 # ─── Грани ───────────────────────────────────────────────────────────────────
 
-## Стиль наружной стены дома: штукатурка двух оттенков или бутовая кладка — пятнами по кварталу.
+## Отделка наружной стены дома (ключ материала): white — белая штукатурка богатого дома (цоколь — тёсаный камень),
+## plaster_a / plaster_b — кремовая штукатурка, ochre — охристая обмазка, rubble — рваный камень (бедные).
+## Дома из HOUSE_STYLES в данных — как указано, остальные — пятнами по кварталу.
+func wall_style(c: int, r: int) -> String:
+	return _wall_style(c, r)
+
+
 func _wall_style(c: int, r: int) -> String:
 	if c < 0 or r < 0 or c >= w or r >= h:
 		return "plaster_a"
@@ -213,14 +234,11 @@ func _wall_style(c: int, r: int) -> String:
 
 
 func _wall_style_calc(c: int, r: int) -> String:
-	var hsh := (int(c / 7) * 73856093) ^ (int(r / 9) * 19349663)
-	match absi(hsh) % 3:
-		0:
-			return "plaster_a"
-		1:
-			return "plaster_b"
-		_:
-			return "rubble"
+	for e: Array in _cfg.get("styles", []):
+		if c >= e[0] and r >= e[1] and c <= e[2] and r <= e[3]:
+			return e[4]
+	var hsh := (int(c / 6) * 73856093) ^ (int(r / 8) * 19349663)
+	return ["plaster_a", "plaster_b", "ochre", "rubble"][absi(hsh) % 4]
 
 
 func _build_faces() -> void:
@@ -283,6 +301,8 @@ func _side_faces(c: int, r: int, d: Vector2i, exposed: Array, k: String, nk: Str
 func _side_material(k: String, nk: String, rel_y: float, neighbor_in: bool, c: int, r: int) -> String:
 	if k == "V":
 		return "ashlar"
+	if k == "r":
+		return "rubble"
 	if k in DOORS or nk in DOORS:
 		return "lintel"
 	if neighbor_in:
@@ -291,9 +311,11 @@ func _side_material(k: String, nk: String, rel_y: float, neighbor_in: bool, c: i
 		# Подступенки и края земли
 		return "paving"
 	if k in WALLS or k in ROOMS or k in INDOOR:
+		var style := _wall_style(c, r)
 		if rel_y < 0.9:
-			return "rubble"
-		return _wall_style(c, r)
+			# Цоколь: у богатых — тёсаный камень, у остальных — бут
+			return "ashlar" if style == "white" else "rubble"
+		return style
 	return "paving"
 
 
@@ -316,14 +338,19 @@ func _top_face(c: int, r: int, y: float, k: String, index: int, count: int) -> v
 	elif k == "M" and index == 1:
 		mat_key = "floor"
 		layer = LevelBuilder.INTERIOR_LAYER
+	elif k == "r":
+		mat_key = "rubble"
 	elif index == 0 and absf(y - g) < 0.01:
-		match k:
-			",":
-				mat_key = "earth"
-			"D", "d", "x", "o":
-				mat_key = "lintel"
-			_:
-				mat_key = "paving"
+		if k == ",":
+			mat_key = "earth"
+		elif k in DOORS:
+			mat_key = "lintel"
+		elif k == "+":
+			mat_key = "paving_main"
+		elif k == ".":
+			mat_key = "paving_dark"
+		else:
+			mat_key = "paving"
 	elif k == "b":
 		mat_key = "wood"
 	var a := Vector3(x0 + c, y, z0 + r)
@@ -382,6 +409,8 @@ func _tile(mat_key: String) -> float:
 	match mat_key:
 		"plaster_a", "plaster_b", "plaster_in":
 			return 3.0
+		"gutter":
+			return 1.0
 		"ashlar", "paving":
 			return 4.0
 		"lintel":
@@ -415,6 +444,86 @@ func _flush_faces() -> void:
 		_b.add_mesh(mesh, Transform3D(), _mat[fb.mat_key])
 	_b.layer = 1
 	_faces.clear()
+
+
+# ─── Проверка комнат ─────────────────────────────────────────────────────────
+
+## Комната, куда можно войти, — не меньше 3×4 м. Меньше — предупреждение: закрой дверь (D, B, H).
+func _check_rooms() -> void:
+	var seen := {}
+	for r in h:
+		for c in w:
+			var k := cell(c, r)
+			if k not in ROOMS or seen.has(Vector2i(c, r)):
+				continue
+			var lo := Vector2i(c, r)
+			var hi := Vector2i(c, r)
+			var open := false
+			var q: Array[Vector2i] = [Vector2i(c, r)]
+			seen[Vector2i(c, r)] = true
+			while not q.is_empty():
+				var p: Vector2i = q.pop_back()
+				lo = Vector2i(mini(lo.x, p.x), mini(lo.y, p.y))
+				hi = Vector2i(maxi(hi.x, p.x), maxi(hi.y, p.y))
+				for d in [Vector2i(1, 0), Vector2i(-1, 0), Vector2i(0, 1), Vector2i(0, -1)]:
+					var nb: Vector2i = p + d
+					var nk := cell(nb.x, nb.y)
+					if nk in "dxo,.+\\":
+						open = true
+					if not seen.has(nb) and (nk in ROOMS or nk in "mM\\"):
+						seen[nb] = true
+						q.append(nb)
+			var size := hi - lo + Vector2i.ONE
+			if open and (mini(size.x, size.y) < 3 or maxi(size.x, size.y) < 4):
+				push_warning("Квартал: в комнату %d×%d м у клетки (%d, %d) можно войти — меньше 3×4 м, закрой дверь" %
+					[size.x, size.y, c, r])
+
+
+# ─── Водосток посередине главной дороги ───────────────────────────────────────
+
+## Клетка — середина главной дороги шириной 3 м: водосток идёт вдоль дороги через её центр.
+## Тёмная полоса крышек с прорезями чуть выше мостовой, без коллизии. В рядах ступеней его нет.
+func _build_gutters() -> void:
+	var gw := 0.32
+	for r in h:
+		if _band[r] == 1:
+			continue
+		for c in w:
+			if cell(c, r) != "+":
+				continue
+			var y := ground[r] + 0.012
+			var p := cell_center(c, r)
+			# Дорога на север: слева и справа ровно по одной клетке дороги, дальше — не дорога
+			if _road_run(c, r, Vector2i(1, 0)) == 3 and cell(c - 1, r) == "+" and cell(c + 1, r) == "+":
+				_flat_quad("gutter", Vector3(p.x - gw * 0.5, y, p.z - 0.5), Vector3(p.x + gw * 0.5, y, p.z + 0.5))
+			if _road_run(c, r, Vector2i(0, 1)) == 3 and cell(c, r - 1) == "+" and cell(c, r + 1) == "+":
+				_flat_quad("gutter", Vector3(p.x - 0.5, y, p.z - gw * 0.5), Vector3(p.x + 0.5, y, p.z + gw * 0.5))
+
+
+## Сколько клеток главной дороги подряд через клетку (c, r) вдоль направления d.
+func _road_run(c: int, r: int, d: Vector2i) -> int:
+	var n := 1
+	var p := Vector2i(c, r) - d
+	while cell(p.x, p.y) == "+":
+		n += 1
+		p -= d
+	p = Vector2i(c, r) + d
+	while cell(p.x, p.y) == "+":
+		n += 1
+		p += d
+	return n
+
+
+## Горизонтальный прямоугольник лицом вверх (a — северо-западный угол, b — юго-восточный).
+func _flat_quad(mat_key: String, a: Vector3, b: Vector3) -> void:
+	var fb := _batch(mat_key, 1, (a + b) * 0.5)
+	var tile := _tile(mat_key)
+	var pts := [Vector3(a.x, a.y, a.z), Vector3(b.x, a.y, a.z), Vector3(b.x, a.y, b.z), Vector3(a.x, a.y, a.z),
+		Vector3(b.x, a.y, b.z), Vector3(a.x, a.y, b.z)]
+	for pt: Vector3 in pts:
+		fb.v.append(pt)
+		fb.n.append(Vector3.UP)
+		fb.uv.append(Vector2(pt.x, pt.z) / tile)
 
 
 # ─── Коллизии ────────────────────────────────────────────────────────────────
@@ -538,7 +647,7 @@ func _build_band_steps() -> void:
 
 func _is_ground_open(c: int, r: int) -> bool:
 	var k := cell(c, r)
-	return k in ".,*bo" or k in "dxD"
+	return k in OPEN_GROUND or k in DOORS
 
 
 # ─── Лестницы ────────────────────────────────────────────────────────────────
@@ -771,10 +880,26 @@ func _build_doors() -> void:
 			var hinge := center + in3 * 0.42 - Basis(Vector3.UP, yaw) * Vector3.RIGHT * 0.47
 			var leaf_mesh := PsxMesh.box(leaf_size, 1.0, 1.0)
 			match k:
-				"D":
+				"D", "H":
 					var xf := Transform3D(Basis(Vector3.UP, yaw), center + in3 * 0.42 + Vector3.UP * (leaf_size.y * 0.5 + 0.02))
 					_b.add_mesh(leaf_mesh, xf, _mat.door)
 					_b.collision_box(xf, leaf_size)
+					if k == "H":
+						# Кровавые ладони и царапины на наружной стороне створки
+						var face := center + in3 * (0.42 - leaf_size.z * 0.5) + Vector3.UP * 0.02
+						_b.add_mesh(PropLibrary.mesh("blood_hands"), Transform3D(Basis.looking_at(out3), face), PropLibrary.material())
+				"B":
+					# Приоткрыта на щель, изнутри подпёрта мебелью: не пройти, но в щель видно завал
+					var basis := Basis(Vector3.UP, yaw - deg_to_rad(18.0 + _rng.randf() * 6.0))
+					var xf := Transform3D(basis, hinge + basis * Vector3(leaf_size.x * 0.5, leaf_size.y * 0.5 + 0.02, 0.0))
+					_b.add_mesh(leaf_mesh, xf, _mat.door)
+					_b.collision_box(Transform3D(Basis(Vector3.UP, yaw), center + in3 * 0.3 + Vector3.UP * 1.05), Vector3(1.0, 2.1, 0.5))
+					_barricade(center + in3 * 1.0, yaw)
+				"c":
+					# Занавесь в проёме, край отогнут; за ней темно, пройти нельзя
+					var xf := Transform3D(Basis(Vector3.UP, yaw), center + out3 * 0.2)
+					_b.add_mesh(PropLibrary.mesh("curtain"), xf, PropLibrary.material())
+					_b.collision_box(Transform3D(Basis(Vector3.UP, yaw), center + in3 * 0.2 + Vector3.UP * 1.05), Vector3(1.0, 2.1, 0.4))
 				"d":
 					var open := deg_to_rad(65.0 + _rng.randf() * 20.0)
 					var basis := Basis(Vector3.UP, yaw - open)
@@ -786,6 +911,19 @@ func _build_doors() -> void:
 					var basis := Basis(Vector3.UP, yaw + _rng.randf_range(-0.5, 0.5)) * Basis(Vector3.RIGHT, PI * 0.5)
 					var p := center + out3 * 1.4 + Vector3.UP * 0.05
 					_b.add_mesh(leaf_mesh, Transform3D(basis, p), _mat.door)
+
+
+## Мебель за заваленной дверью (внутри, у проёма): опрокинутый стол, сундук, кувшин. Виден в щель.
+func _barricade(at: Vector3, yaw: float) -> void:
+	var layer_prev := _b.layer
+	_b.layer = LevelBuilder.INTERIOR_LAYER
+	var basis := Basis(Vector3.UP, yaw)
+	var mat := PropLibrary.material()
+	_b.add_mesh(PropLibrary.mesh("table_tipped"), Transform3D(basis, at + basis * Vector3(0.0, 0.0, 0.25)), mat)
+	_b.add_mesh(PropLibrary.mesh("chest"), Transform3D(basis.rotated(Vector3.UP, 0.3), at + basis * Vector3(0.3, 0.0, -0.4)), mat)
+	_b.add_mesh(PropLibrary.mesh("jar_large"), Transform3D(basis, at + basis * Vector3(-0.55, 0.0, -0.3)), mat)
+	_b.add_mesh(PropLibrary.mesh("stool"), Transform3D(basis.rotated(Vector3.FORWARD, 1.4), at + basis * Vector3(-0.1, 0.62, 0.0)), mat)
+	_b.layer = layer_prev
 
 
 func _inner_rank(k: String) -> int:
@@ -869,6 +1007,8 @@ func _roof_top_calc(c: int, r: int) -> float:
 	var k := cell(c, r)
 	if k == "V":
 		return deck_y
+	if k == "r":
+		return NAN
 	if k in WALLS or k in ROOMS or k in DOORS or k in "mM\\":
 		return ground[r] + _house_height(c, r)
 	if k == "=":
@@ -895,26 +1035,33 @@ func _build_bridges() -> void:
 		_b.box_between(a, b, _mat.wood, 1.0, true)
 
 
+## Завал (символ *): рухнувшая кладка в рост человека и выше, во всю ширину прохода, из неё торчат балки.
+## Видно сразу: здесь не пройти. Коллизия — коробка 2,8 м.
 func _build_rubble() -> void:
 	for comp: Array in _components("*"):
 		var lo: Vector2i = comp[0]
 		var hi: Vector2i = comp[1]
 		var g := ground[hi.y]
-		var size := Vector3(hi.x - lo.x + 1, 1.8, hi.y - lo.y + 1)
+		var size := Vector3(hi.x - lo.x + 1, 2.8, hi.y - lo.y + 1)
 		var center := Vector3(x0 + (lo.x + hi.x + 1) * 0.5, g, z0 + (lo.y + hi.y + 1) * 0.5)
-		_b.collision_box(Transform3D(Basis(), center + Vector3.UP * 0.9), size)
-		# Куча блоков: крупные внизу, мельче сверху
-		var y := g - 0.1
-		for layer_i in 3:
-			var n := int((size.x * size.z) * (0.9 - layer_i * 0.3)) + 1
-			var top_min := INF
+		_b.collision_box(Transform3D(Basis(), center + Vector3.UP * size.y * 0.5), size)
+		# Куча блоков: крупные внизу и по всей площади, выше — мельче и ближе к середине
+		# Слои по 0,45 м: вершина кучи — около 2,4 м, выше глаз
+		for layer_i in 6:
+			var y := g - 0.1 + layer_i * 0.45
+			var shrink := 1.0 - layer_i * 0.13
+			var n := int((size.x * size.z) * (1.0 - layer_i * 0.12)) + 1
 			for i in n:
-				var s := Vector3(_rng.randf_range(0.6, 1.3), _rng.randf_range(0.35, 0.7), _rng.randf_range(0.5, 1.1)) * (1.0 - layer_i * 0.2)
-				var p := center + Vector3(_rng.randf_range(-0.45, 0.45) * size.x, 0.0, _rng.randf_range(-0.45, 0.45) * size.z) * (1.0 - layer_i * 0.3)
+				var s := Vector3(_rng.randf_range(0.6, 1.2), _rng.randf_range(0.55, 0.85), _rng.randf_range(0.5, 1.0)) * (1.0 - layer_i * 0.08)
+				var p := center + Vector3(_rng.randf_range(-0.5, 0.5) * size.x, 0.0, _rng.randf_range(-0.5, 0.5) * size.z) * shrink
 				p.y = y
-				_b.box(p, s, _mat.ashlar, 2.0, false, _rng.randf() * PI)
-				top_min = minf(top_min, s.y)
-			y += top_min - 0.1
+				_b.box(p, s, _mat.rubble if i % 3 == 0 else _mat.ashlar, 2.0, false, _rng.randf() * PI)
+		# Балки перекрытий торчат из кучи наискось
+		var beams := clampi(int(size.x * size.z / 3.0), 2, 6)
+		for i in beams:
+			var p := center + Vector3(_rng.randf_range(-0.35, 0.35) * size.x, _rng.randf_range(1.6, 2.4), _rng.randf_range(-0.35, 0.35) * size.z)
+			var basis := Basis(Vector3.UP, _rng.randf() * PI) * Basis(Vector3.RIGHT, _rng.randf_range(0.5, 1.1))
+			_b.add_mesh(PsxMesh.box(Vector3(0.22, 0.18, _rng.randf_range(2.6, 3.6)), 1.0, 1.0), Transform3D(basis, p), _mat.wood)
 
 
 func _build_shops() -> void:

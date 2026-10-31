@@ -22,6 +22,7 @@ const DETAIL_RANGE_DAY := 70.0
 
 var _b: LevelBuilder
 var _quarter: QuarterBuilder
+var _glows := Glows.new()
 var _m := {}
 ## Y верха стены Храмовой горы (платформы) в игре.
 var _wall_top := 0.0
@@ -44,11 +45,12 @@ func _ready() -> void:
 	var q: Dictionary = D.QUARTER.duplicate()
 	q.shop = D.SHOP
 	q.crown = D.WILSON_ARCH.crown
+	q.styles = D.HOUSE_STYLES
 	_quarter = QuarterBuilder.new(_b, _m, q, D.QUARTER_MAP, D.TERRACES,
 		WorldCoords.point(D.QUARTER.x, D.QUARTER.y), _plaza_y, _wall_top)
 	_quarter.build()
-	var props := QuarterProps.new(_quarter, _b, D.PROP_DENSITY)
-	props.build(D.ROOMS, D.PROPS)
+	var props := QuarterProps.new(_quarter, _b, D.PROP_DENSITY, _glows)
+	props.build(D.ROOMS, D.PROPS, D.WALL_PROPS)
 	_b.local = true
 	for e in D.PLAZA_PROPS:
 		var pos := WorldCoords.point(e[1], e[2])
@@ -64,18 +66,11 @@ func _ready() -> void:
 	_build_construction()
 	_build_antonia()
 	_build_bounds()
+	_build_lights()
 	_b.commit()
+	_glows.commit(_geometry)
 	_place_player()
 	_apply_lighting()
-
-
-func _process(_delta: float) -> void:
-	# Отсвет кровавой луны — только на верхах стен: полоса высот считается от земли под героем
-	var band := _current_preset().dir_light_band()
-	if band.x > -100.0:
-		var g := _ground_y(_player.global_position.z)
-		PsxMaterial.set_global("psx_dir_light_y0", g + band.x)
-		PsxMaterial.set_global("psx_dir_light_y1", g + band.y)
 
 
 ## Y земли в точке z: в квартале — по террасам, южнее — площадь, севернее — у ворот Антонии.
@@ -108,28 +103,22 @@ func is_day() -> bool:
 	return _is_day
 
 
-## Для отладочной панели: чёрное солнце ⇄ кровавая луна.
-func cycle_sky() -> void:
-	if darkness.sky_body == LightingPreset.SkyBody.BLACK_SUN:
-		darkness.sky_body = LightingPreset.SkyBody.BLOOD_MOON
-	else:
-		darkness.sky_body = LightingPreset.SkyBody.BLACK_SUN
-	_apply_lighting()
-
-
-func sky_name() -> String:
-	return "чёрное солнце" if darkness.sky_body == LightingPreset.SkyBody.BLACK_SUN else "кровавая луна"
-
-
 func _make_materials() -> void:
 	var limestone := Color(0.84, 0.78, 0.64)
 	_m.ashlar = PsxMaterial.make(ProcTextures.ashlar(128, 4, limestone, 11))
 	_m.slab = PsxMaterial.make(ProcTextures.ashlar(128, 3, Color(0.8, 0.77, 0.68), 12, 0, false, 0.4, 0.9, 0.2, 0.025))
 	_m.paving = PsxMaterial.make(ProcTextures.ashlar(64, 2, Color(0.7, 0.66, 0.58), 13, 0, false, 0.25, 0.6, 0.45, 0.05))
+	# Главная дорога — крупные светлые плиты; боковые переулки — тёмная мелкая мостовая; водосток — тёмные крышки
+	_m.paving_main = PsxMaterial.make(ProcTextures.ashlar(64, 2, Color(0.84, 0.8, 0.7), 15, 0, false, 0.3, 0.7, 0.3, 0.04))
+	_m.paving_dark = PsxMaterial.make(ProcTextures.ashlar(64, 4, Color(0.48, 0.45, 0.4), 16, 0, false, 0.25, 0.55, 0.5, 0.06))
+	_m.gutter = PsxMaterial.make(ProcTextures.stripes(64, 8, Color(0.2, 0.19, 0.18), Color(0.34, 0.32, 0.3), 17))
 	_m.lintel = PsxMaterial.make(ProcTextures.ashlar(64, 2, Color(0.82, 0.78, 0.68), 14, 2, true, 0.4, 0.8, 0.35, 0.04))
 	_m.plaster_a = PsxMaterial.make(ProcTextures.plaster(64, Color(0.84, 0.8, 0.7), 21))
 	_m.plaster_b = PsxMaterial.make(ProcTextures.plaster(64, Color(0.82, 0.74, 0.64), 22))
 	_m.plaster_in = PsxMaterial.make(ProcTextures.plaster(64, Color(0.78, 0.74, 0.66), 23))
+	# Белая штукатурка богатых домов и охристая обмазка бедных
+	_m.white = PsxMaterial.make(ProcTextures.plaster(64, Color(0.93, 0.92, 0.88), 18))
+	_m.ochre = PsxMaterial.make(ProcTextures.plaster(64, Color(0.76, 0.58, 0.36), 19))
 	_m.rubble = PsxMaterial.make(ProcTextures.rubble(64, 22, Color(0.7, 0.64, 0.52), Color(0.82, 0.78, 0.7), 24))
 	_m.rubble_in = PsxMaterial.make(ProcTextures.rubble(64, 18, Color(0.6, 0.55, 0.46), Color(0.7, 0.66, 0.6), 25))
 	_m.earth = PsxMaterial.make(ProcTextures.mottled(64, Color(0.55, 0.45, 0.33), 0.05, 0.1, 26))
@@ -438,6 +427,8 @@ func _build_antonia() -> void:
 		_merlons(Vector3(c.x, 0.0, c.y - ts), Vector3(c.x, 0.0, c.y), th)
 		_merlons(Vector3(c.x + ts, 0.0, c.y - ts), Vector3(c.x + ts, 0.0, c.y), th)
 		_merlons(Vector3(c.x, 0.0, c.y - ts), Vector3(c.x + ts, 0.0, c.y - ts), th)
+		if i == a.beacon_tower:
+			_beacon(Vector3(c.x + a.beacon_offset.x, th, c.y - a.beacon_offset.y))
 
 	# Стена поперёк улицы с воротами
 	var g: Dictionary = D.ANTONIA_GATE
@@ -460,16 +451,42 @@ func _build_antonia() -> void:
 		var xb: float = gx + side * leaf
 		_b.box_between(Vector3(minf(xa, xb), gy, zg - ht - 0.25), Vector3(maxf(xa, xb), gy + door_h, zg - ht),
 			_m.gate, 2.25, true)
-	# За воротами — триггер «конец уровня»
+	# Перед воротами — триггер «конец уровня»: подошёл к створкам вплотную
 	var area := Area3D.new()
 	area.name = "LevelExit"
 	var shape := CollisionShape3D.new()
 	shape.shape = BoxShape3D.new()
 	shape.shape.size = Vector3(g.span + 2.0, 3.0, g.trigger_depth)
 	area.add_child(shape)
-	area.position = Vector3(gx, gy + 1.5, zg - ht - 0.3 - g.trigger_depth * 0.5)
+	area.position = Vector3(gx, gy + 1.5, zg + ht + g.trigger_depth * 0.5)
 	area.body_entered.connect(_on_exit_body_entered)
 	add_child(area)
+
+
+## Маяк — сигнальный огонь на башне Антонии: железная корзина с огнём и большое мерцающее пятно,
+## видное сквозь туман через весь уровень (огоньки FAR). Это цель уровня.
+func _beacon(base: Vector3) -> void:
+	_b.box(base, Vector3(1.2, 0.5, 1.2), _m.ashlar, 2.0, false)
+	_b.add_mesh(PropLibrary.mesh("brazier"), Transform3D(Basis.from_scale(Vector3.ONE * 1.6), base + Vector3.UP * 0.5),
+		PropLibrary.material())
+	var fire := base + Vector3.UP * 2.3
+	_glows.add(fire, 1.3, Glows.Kind.FAR, Glows.FIRE, 2.2)
+	_glows.add(fire + Vector3.UP * 0.8, 4.5, Glows.Kind.FAR, Glows.FIRE, 1.2)
+	_glows.add(fire + Vector3.UP * 2.0, 11.0, Glows.Kind.FAR, Color(0.9, 0.4, 0.15), 0.7)
+
+
+## Настоящий свет у жаровен (LIGHTS в данных): тёплый, мерцает, без теней.
+func _build_lights() -> void:
+	for e in D.LIGHTS:
+		var light := OmniLight3D.new()
+		light.light_color = Color(1.0, 0.55, 0.25)
+		light.light_energy = e[3]
+		light.omni_range = e[4]
+		light.omni_attenuation = 0.9
+		light.shadow_enabled = false
+		light.position = _quarter.cell_center(e[0], e[1]) + Vector3.UP * float(e[2])
+		light.set_script(preload("res://scripts/flicker_light.gd"))
+		add_child(light)
 
 
 ## Зубцы по отрезку a → b (по XZ) на высоте y: 0,8 м зубец, 0,8 м промежуток.

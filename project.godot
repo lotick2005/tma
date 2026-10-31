@@ -165,14 +165,6 @@ psx_light_max={
 "type": "float",
 "value": 0.9
 }
-psx_dir_light_y0={
-"type": "float",
-"value": -1000.0
-}
-psx_dir_light_y1={
-"type": "float",
-"value": -999.0
-}
 
 [tma]
 
