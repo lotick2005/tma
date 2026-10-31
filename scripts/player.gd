@@ -62,6 +62,9 @@ signal footstep(mode: MoveMode)
 
 var move_mode: MoveMode = MoveMode.STAND
 var stamina := 0.0
+## Управление отобрано (катсцена): нет обзора мышью, движения, приседа и светильника по клавишам.
+## Взгляд, присед и светильник катсцена меняет сама — через set_look(), crouch(), set_lamp().
+var locked := false
 
 var _crouched := false
 var _exhausted := false
@@ -88,6 +91,8 @@ func _ready() -> void:
 
 
 func _unhandled_input(event: InputEvent) -> void:
+	if locked:
+		return
 	if event is InputEventMouseMotion and Input.mouse_mode == Input.MOUSE_MODE_CAPTURED:
 		# screen_relative — в пикселях экрана, не зависит от растяжения 320×240
 		var d: Vector2 = event.screen_relative * mouse_sensitivity
@@ -104,10 +109,10 @@ func _physics_process(delta: float) -> void:
 	if not is_on_floor():
 		velocity.y -= _gravity * delta
 
-	if not crouch_toggle:
+	if not crouch_toggle and not locked:
 		_set_crouched(Input.is_action_pressed("crouch"))
 
-	var input := Input.get_vector("move_left", "move_right", "move_forward", "move_back")
+	var input := Vector2.ZERO if locked else Input.get_vector("move_left", "move_right", "move_forward", "move_back")
 	var has_input := input.length_squared() > 0.01
 	var wants_run := has_input and Input.is_action_pressed("run")
 	if wants_run and _crouched:
@@ -148,6 +153,49 @@ func _physics_process(delta: float) -> void:
 	_update_bob(delta, moving)
 	var speed_ratio := horizontal.length() / walk_speed if moving else 0.0
 	_body.update_pose(_head.position.y, _head.rotation.x, _bob_phase, speed_ratio)
+
+
+# ─── Для катсцен (scripts/cutscene_player.gd) ────────────────────────────────
+
+## Отобрать / вернуть управление.
+func set_locked(on: bool) -> void:
+	locked = on
+
+
+## Камера в глазах героя.
+func eye_camera() -> Camera3D:
+	return _camera
+
+
+## Взгляд: (поворот тела вокруг Y, наклон головы), радианы.
+func get_look() -> Vector2:
+	return Vector2(rotation.y, _head.rotation.x)
+
+
+func set_look(yaw: float, pitch: float) -> void:
+	rotation.y = yaw
+	var limit := deg_to_rad(pitch_limit_deg)
+	_head.rotation.x = clampf(pitch, -limit, limit)
+
+
+## Какой взгляд нужен, чтобы смотреть из глаз на точку.
+func look_at_angles(point: Vector3) -> Vector2:
+	var d := point - _camera.global_position
+	var flat := Vector2(d.x, d.z).length()
+	return Vector2(atan2(-d.x, -d.z), atan2(d.y, maxf(flat, 0.001)))
+
+
+func crouch(on: bool) -> void:
+	_set_crouched(on)
+
+
+func set_lamp(out: bool, instant := false) -> void:
+	if _arms.lamp_out != out:
+		_arms.set_lamp_out(out, instant)
+
+
+func set_head_visible(on: bool) -> void:
+	_body.set_head_visible(on)
 
 
 func _update_bob(delta: float, moving: bool) -> void:

@@ -202,6 +202,24 @@ func play_3d(sound_name: String, pos: Vector3, opts := {}) -> SoundEmitter:
 	return em
 
 
+## Разовый звук не из точки (на свою шину из реестра): катсцены, интерфейс. opts: "db" — добавка громкости.
+func play_2d(sound_name: String, opts := {}) -> AudioStreamPlayer:
+	if not unlocked:
+		return null
+	var stream := get_stream(sound_name)
+	if stream == null:
+		return null
+	var e := entry(sound_name)
+	var p := AudioStreamPlayer.new()
+	p.stream = stream
+	p.bus = e.get("bus", "SFX")
+	p.volume_db = float(e.get("db", 0.0)) + float(opts.get("db", 0.0))
+	p.finished.connect(p.queue_free)
+	_scene_root().add_child(p)
+	p.play()
+	return p
+
+
 ## Постоянный 3D-источник (зацикленный звук), ребёнок узла parent в точке local_pos.
 ## Начнёт звучать после клика (со случайного места). set_active(false) — выключить.
 func add_emitter(sound_name: String, parent: Node3D, local_pos: Vector3, opts := {}) -> SoundEmitter:

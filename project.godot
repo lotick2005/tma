@@ -24,6 +24,7 @@ general/default_playback_type.web=0
 GameState="*res://scripts/game_state.gd"
 ThreatDirector="*res://scripts/threat_director.gd"
 AudioManager="*res://scripts/audio_manager.gd"
+Cutscenes="*res://scripts/cutscene_player.gd"
 
 [display]
 

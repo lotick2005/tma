@@ -1249,6 +1249,46 @@ static func _figure(b: PB, j: Dictionary, tunic: int, skin: int = Tile.SKIN, fee
 		b.box(ft + fwd * 0.07 + Vector3.DOWN * 0.03, Vector3(0.1, 0.06, 0.24), feet, Basis.looking_at(fwd, up))
 
 
+## Сколько вариантов живых людей (толпа вступления): одежда и покрывало на голове.
+const PERSON_VARIANTS := 4
+
+
+## Стоящий живой человек ростом ~1,7 м (толпа и вестник во вступлении), лицом в −Z, точка — между ступней.
+## Варианты: 0 — мужчина в льняной тунике, 1 — женщина в синем с покрывалом, 2 — в охристом,
+## 3 — в буром с белым платком. Меш кешируется.
+static func person_mesh(variant: int) -> Mesh:
+	var key := "person_%d" % variant
+	if _meshes.has(key):
+		return _meshes[key]
+	var robes := [Tile.LINEN, Tile.CLOTH_BLUE, Tile.CLOTH_OCHRE, Tile.SACK]
+	var covers := [-1, Tile.LINEN, -1, Tile.LINEN]
+	var v := posmod(variant, PERSON_VARIANTS)
+	var robe: int = robes[v]
+	var b := PB.new()
+	# У _figure лицо смотрит в +Z (волосы — на −Z): строим зеркально по Z и разворачиваем на 180°, лицом в −Z
+	b.xf = Transform3D(Basis(Vector3.UP, PI), Vector3.ZERO)
+	_figure(b, {
+		"hip": Vector3(0.0, 0.95, 0.0), "neck": Vector3(0.0, 1.44, 0.0), "head": Vector3(0.0, 1.58, 0.02),
+		"sl": Vector3(-0.2, 1.4, 0.0), "sr": Vector3(0.2, 1.4, 0.0),
+		"el": Vector3(-0.25, 1.13, -0.03), "hl": Vector3(-0.24, 0.9, 0.06),
+		"er": Vector3(0.25, 1.13, -0.03), "hr": Vector3(0.24, 0.9, 0.06),
+		"pl": Vector3(-0.1, 0.95, 0.0), "kl": Vector3(-0.11, 0.5, 0.01), "fl": Vector3(-0.12, 0.07, 0.0),
+		"pr": Vector3(0.1, 0.95, 0.0), "kr": Vector3(0.11, 0.5, 0.01), "fr": Vector3(0.12, 0.07, 0.0),
+		"toes": Vector3.BACK,
+	}, robe)
+	# Длинная одежда до икр поверх ног
+	b.box(Vector3(0.0, 0.62, 0.0), Vector3(0.42, 0.72, 0.28), robe)
+	b.box(Vector3(0.0, 0.34, 0.0), Vector3(0.46, 0.18, 0.3), robe)
+	var cover: int = covers[v]
+	if cover >= 0:
+		# Покрывало: на голове и спадает на спину
+		_ball(b, Vector3(0.0, 1.6, 0.0), 0.13, cover)
+		b.box(Vector3(0.0, 1.3, -0.1), Vector3(0.4, 0.55, 0.08), cover)
+	var m := b.commit()
+	_meshes[key] = m
+	return m
+
+
 ## Человек в дверном проёме: лежит ничком головой на улицу (−Z), правая рука тянется вперёд, на улицу.
 ## Точка — порог; ноги — в доме (+Z).
 static func _make_body_doorway() -> Mesh:

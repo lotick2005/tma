@@ -14,3 +14,5 @@ var story_flags: Dictionary = {}
 var has_key: bool = false
 ## Светильник в руке (true) или убран (false). Клавиша F, см. scripts/hero_arms.gd.
 var lamp_out: bool = true
+## Вступление (уровень 1: день на площади, вестник, тьма) пройдено — уровень сразу начинается во тьме.
+var intro_done: bool = false

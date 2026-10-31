@@ -57,6 +57,13 @@ const SOUNDS := {
 	"dogs": {"synth": "dogs", "bus": "Ambience", "db": -6.0, "loop": true, "unit": 8.0, "range": 70.0},
 	"distant_singing": {"synth": "distant_singing", "bus": "Ambience", "db": -4.0, "loop": true, "unit": 10.0, "range": 90.0},
 
+	# ─── Вступление (этап 4) ──────────────────────────────────────────────────────
+	## Пение толпы превращается в крик и плач: 3D-источники среди толпы на площади.
+	"crowd_wail": {"synth": "crowd_wail", "bus": "Voices", "db": -2.0, "loop": true, "unit": 4.0, "range": 60.0},
+	## Сбивчивая речь вестника (заглушка; потом — запись голоса). Звучит из его головы.
+	"voice_messenger": {"synth": "voice_babble", "bus": "Voices", "db": -4.0, "variants": 4, "unit": 2.0, "range": 25.0,
+		"pitch": 0.04},
+
 	# ─── Хор (только главное меню и молельная комната уровня 1) ──────────────────
 	## Стерео — для главного меню (этап 10).
 	"prayer_choir": {"file": "res://audio/prayer_choir.ogg", "bus": "Music", "db": -6.0, "loop": true},

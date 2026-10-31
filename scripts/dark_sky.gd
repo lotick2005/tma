@@ -41,6 +41,12 @@ func show_body(preset: LightingPreset) -> void:
 	(_disc.material_override as StandardMaterial3D).albedo_texture = _textures.disc
 
 
+## Насколько проявилось тело, 0…1 (вступление: чёрный диск наползает на дневное небо).
+func set_fade(alpha: float) -> void:
+	for mi in [_disc, _halo]:
+		(mi.material_override as StandardMaterial3D).albedo_color.a = alpha
+
+
 ## Квадрат-билборд без света и тумана. order — порядок отрисовки (ореол под диском).
 func _make_quad(order: int) -> MeshInstance3D:
 	var mat := StandardMaterial3D.new()
