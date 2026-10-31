@@ -9,7 +9,7 @@ PS1-хоррор от первого лица на Godot 4. Иерусалим, 
 | Файл | Зачем |
 |---|---|
 | `CLAUDE.md` | Библия игры и правила для Claude Code — главный источник правды |
-| `PROMPTS.md` | Пошаговые промпты для Claude Code, этапы 0–10 |
+| `PROMPTS.md` | Пошаговые промпты для Claude Code, этапы 0–13 |
 | `docs/architecture.md`, `docs/map.svg` | Эскиз архитектуры Иерусалима ~33 г. и карта маршрута побега |
 | `.github/workflows/web.yml` | Автосборка браузерной версии на GitHub Pages |
 | `tools/get_godot.sh`, `.godot-version` | Скачивание Godot нужной версии для проверок и сборки |
