@@ -29,6 +29,8 @@ var occlude := true
 var one_shot := true
 ## Громкость, дБ (добавка поверх реестра).
 var volume_db := 0.0
+## Доля звука, идущая в эхо зоны (1 — как у звуков мира; свои шаги героя — почти сухие).
+var reverb_gain := 1.0
 ## 0 — слышно напрямую, 1 — за стеной.
 var occlusion := 0.0
 var occlusion_target := 0.0
@@ -139,7 +141,7 @@ func _apply() -> void:
 	var cutoff := lerpf(CUTOFF_CLEAR, CUTOFF_OCCLUDED, occlusion)
 	var filter_db := lerpf(FILTER_DB_CLEAR, FILTER_DB_OCCLUDED, occlusion)
 	for p in _players():
-		p.volume_db = db
+		p.volume_db = db + (linear_to_db(maxf(reverb_gain, 1e-4)) if p == twin else 0.0)
 		p.attenuation_filter_cutoff_hz = cutoff
 		p.attenuation_filter_db = filter_db
 
