@@ -14,7 +14,36 @@ extends RefCounted
 ##   variants — сколько вариантов сгенерировать заглушкой (при каждом проигрывании берётся случайный);
 ##   unit     — расстояние, м, на котором 3D-звук звучит в полную силу (дальше тише);
 ##   range    — дальше этого, м, 3D-звук не слышен;
-##   pitch    — случайный разброс высоты при проигрывании (0,05 = ±5 %).
+##   pitch    — случайный разброс высоты при проигрывании (0,05 = ±5 %);
+##   db_rand  — случайный разброс громкости, ±дБ.
+## Варианты берутся случайно, но один и тот же не звучит дважды подряд.
+
+const _STEPS_STONE := [
+	"res://audio/steps_stone_01.ogg", "res://audio/steps_stone_02.ogg", "res://audio/steps_stone_03.ogg",
+	"res://audio/steps_stone_04.ogg", "res://audio/steps_stone_05.ogg", "res://audio/steps_stone_06.ogg",
+	"res://audio/steps_stone_07.ogg", "res://audio/steps_stone_08.ogg", "res://audio/steps_stone_09.ogg",
+	"res://audio/steps_stone_10.ogg", "res://audio/steps_stone_11.ogg", "res://audio/steps_stone_12.ogg",
+]
+const _STEPS_STONE_RUN := [
+	"res://audio/steps_stone_run_01.ogg", "res://audio/steps_stone_run_02.ogg", "res://audio/steps_stone_run_03.ogg",
+	"res://audio/steps_stone_run_04.ogg", "res://audio/steps_stone_run_05.ogg", "res://audio/steps_stone_run_06.ogg",
+]
+const _STEPS_STAIRS := [
+	"res://audio/steps_stairs_01.ogg", "res://audio/steps_stairs_02.ogg", "res://audio/steps_stairs_03.ogg",
+	"res://audio/steps_stairs_04.ogg", "res://audio/steps_stairs_05.ogg", "res://audio/steps_stairs_06.ogg",
+	"res://audio/steps_stairs_07.ogg", "res://audio/steps_stairs_08.ogg", "res://audio/steps_stairs_09.ogg",
+	"res://audio/steps_stairs_10.ogg",
+]
+const _BREATH_RUN := [
+	"res://audio/breath_run_01.ogg", "res://audio/breath_run_02.ogg", "res://audio/breath_run_03.ogg",
+	"res://audio/breath_run_04.ogg", "res://audio/breath_run_05.ogg",
+]
+const _BREATH_TIRED := [
+	"res://audio/breath_tired_01.ogg", "res://audio/breath_tired_02.ogg", "res://audio/breath_tired_03.ogg",
+	"res://audio/breath_tired_04.ogg", "res://audio/breath_tired_05.ogg", "res://audio/breath_tired_06.ogg",
+	"res://audio/breath_tired_07.ogg",
+]
+const _BREATH_CALM := ["res://audio/breath_calm_01.ogg", "res://audio/breath_calm_02.ogg"]
 
 const SOUNDS := {
 	# ─── Фон (не 3D, слой с плавным фейдом) ───────────────────────────────────────
@@ -48,16 +77,21 @@ const SOUNDS := {
 	"whisper": {"synth": "whisper", "bus": "Voices", "db": -8.0, "variants": 3, "unit": 2.0, "range": 25.0, "pitch": 0.05},
 
 	# ─── Герой ────────────────────────────────────────────────────────────────────
-	## Шаги по поверхностям: мостовая, утоптанная земля дворов и комнат, дерево мостков и лестниц.
-	"step_stone": {"synth": "step_stone", "bus": "SFX", "db": -10.0, "variants": 5, "unit": 1.5, "range": 18.0, "pitch": 0.06},
+	## Шаги (записи, авторы — audio/CREDITS.md). Пока только камень: ходьба и присед, бег, ступени и лестницы.
+	## Свои шаги почти сухие (доля эха — HeroAudio.step_reverb) и тише фона тьмы.
+	"step_stone": {"file": _STEPS_STONE, "bus": "SFX", "db": -17.0, "db_rand": 2.0, "unit": 1.5, "range": 18.0, "pitch": 0.04},
+	"step_stone_run": {"file": _STEPS_STONE_RUN, "bus": "SFX", "db": -16.0, "db_rand": 2.0, "unit": 1.5, "range": 18.0, "pitch": 0.04},
+	"step_stairs": {"file": _STEPS_STAIRS, "bus": "SFX", "db": -16.0, "db_rand": 2.0, "unit": 1.5, "range": 18.0, "pitch": 0.04},
+	## Заглушки других поверхностей — на потом (AudioManager.surfaces_enabled).
 	"step_earth": {"synth": "step_earth", "bus": "SFX", "db": -10.0, "variants": 5, "unit": 1.5, "range": 18.0, "pitch": 0.06},
 	"step_wood": {"synth": "step_wood", "bus": "SFX", "db": -8.0, "variants": 4, "unit": 1.5, "range": 18.0, "pitch": 0.05},
-	## Дыхание: спокойное, тяжёлое после бега, частое при угрозе (петли, их громкость смешивает HeroAudio).
-	"breath_calm": {"synth": "breath_calm", "bus": "SFX", "db": -22.0, "loop": true},
-	"breath_heavy": {"synth": "breath_heavy", "bus": "SFX", "db": -10.0, "loop": true},
-	"breath_fast": {"synth": "breath_fast", "bus": "SFX", "db": -12.0, "loop": true},
+	## Дыхание — отдельные циклы, HeroAudio ставит их подряд (не петли): бег и угроза, одышка после бега,
+	## «затаился» (присел, стоит, угроза > 0,3).
+	"breath_run": {"file": _BREATH_RUN, "bus": "SFX", "db": -14.0},
+	"breath_tired": {"file": _BREATH_TIRED, "bus": "SFX", "db": -13.0},
+	"breath_calm": {"file": _BREATH_CALM, "bus": "SFX", "db": -22.0},
 	## Один удар сердца («тук-тук»); частоту задаёт HeroAudio.
-	"heartbeat": {"synth": "heartbeat", "bus": "SFX", "db": -4.0},
+	"heartbeat": {"synth": "heartbeat", "bus": "SFX", "db": -10.0},
 
 	# ─── Предметы ─────────────────────────────────────────────────────────────────
 	"shard_break": {"synth": "shard_break", "bus": "SFX", "db": -4.0, "variants": 3, "unit": 3.0, "range": 40.0, "pitch": 0.08},

@@ -38,12 +38,17 @@ var false_alarm_points := {}
 var false_alarms_enabled := false
 ## Показывать отладочные зоны и источники.
 var debug_visible := false
+## Разные поверхности под ногами (земля, дерево). Пока выключено: записаны только шаги по камню,
+## surface_at() везде отдаёт "stone"; код поверхностей (surface_provider) оставлен на потом.
+var surfaces_enabled := false
 
 ## Готовые потоки: имя → Array[AudioStream] (варианты).
 var _streams := {}
 ## Очередь заглушек на фоновую генерацию.
 var _pending: Array[String] = []
 var _layers := {}
+## Последний сыгранный вариант каждого звука (чтобы не повторять подряд).
+var _last_variant := {}
 var _emitters: Array[SoundEmitter] = []
 var _occlusion_timer := 0.0
 var _occlusion_index := 0
@@ -99,12 +104,17 @@ func entry(sound_name: String) -> Dictionary:
 	return REG.SOUNDS.get(sound_name, {})
 
 
-## Поток звука (случайный вариант).
+## Поток звука: случайный вариант, не повторяя предыдущий подряд.
 func get_stream(sound_name: String) -> AudioStream:
 	var list := _variants(sound_name)
 	if list.is_empty():
 		return null
-	return list[randi() % list.size()]
+	var i := randi() % list.size()
+	var last: int = _last_variant.get(sound_name, -1)
+	if list.size() > 1 and i == last:
+		i = (i + 1 + randi() % (list.size() - 1)) % list.size()
+	_last_variant[sound_name] = i
+	return list[i]
 
 
 func _variants(sound_name: String) -> Array:
@@ -173,7 +183,8 @@ func _unhandled_input(event: InputEvent) -> void:
 
 ## Разовый 3D-звук в точке мира. Вернёт источник (или null, если звука нет или ещё не было клика).
 ## opts: "db" — добавка громкости, "occlude" — проверять стены (по умолчанию да), "reverb" — эхо зон (да),
-## "pitch" — своя высота (иначе случайный разброс из реестра).
+## "reverb_gain" — доля звука в эхо (1 — полностью), "pitch" — своя высота (иначе случайный разброс из реестра).
+## Разброс громкости ±"db_rand" дБ — из реестра.
 func play_3d(sound_name: String, pos: Vector3, opts := {}) -> SoundEmitter:
 	if not unlocked:
 		return null
@@ -183,6 +194,7 @@ func play_3d(sound_name: String, pos: Vector3, opts := {}) -> SoundEmitter:
 	var e := entry(sound_name)
 	var em := _make_emitter(sound_name, e, opts)
 	em.one_shot = true
+	em.volume_db += randf_range(-1.0, 1.0) * float(e.get("db_rand", 0.0))
 	_scene_root().add_child(em)
 	em.global_position = pos
 	var pitch: float = opts.get("pitch", 1.0 + randf_range(-1.0, 1.0) * float(e.get("pitch", 0.0)))
@@ -212,6 +224,7 @@ func _make_emitter(sound_name: String, e: Dictionary, opts: Dictionary) -> Sound
 	em.sound_name = sound_name
 	em.occlude = opts.get("occlude", true)
 	em.volume_db = opts.get("db", 0.0)
+	em.reverb_gain = opts.get("reverb_gain", 1.0)
 	# Фон дня (шина Ambience) — без эха: его гасит угроза и «заглушить фон», а шины эха — нет
 	var reverb: bool = opts.get("reverb", e.get("bus", "SFX") != "Ambience")
 	em.setup(e, reverb)
@@ -328,7 +341,7 @@ func _update_buses(delta: float) -> void:
 
 ## Поверхность под ногами: "stone" — мостовая, "earth" — земля дворов и комнат, "wood" — мостки и лестницы.
 func surface_at(pos: Vector3) -> String:
-	if surface_provider.is_valid():
+	if surfaces_enabled and surface_provider.is_valid():
 		return surface_provider.call(pos)
 	return "stone"
 
