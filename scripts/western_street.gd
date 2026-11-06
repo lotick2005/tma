@@ -189,9 +189,14 @@ func _add_sound(sound_name: String, pos: Vector3, when: String) -> void:
 			em.set_active(true)
 
 
-## Днём — гомон площади и дневные источники, во тьме — фон тьмы, хор в молельне и ложные тревоги.
+## Днём — гомон площади и дневные источники, во тьме — фон тьмы с ветром, хор в молельне и ложные тревоги.
 func _apply_audio(fade := 3.0) -> void:
 	AudioManager.set_layer("bg", "ambience_day_crowd" if _is_day else "ambient_drone", fade)
+	# Во тьме под гулом — тихий ветер (второй слой)
+	if _is_day:
+		AudioManager.clear_layer("wind", fade)
+	else:
+		AudioManager.set_layer("wind", "wind_drone", fade)
 	for em in _day_sounds:
 		em.set_active(_is_day)
 	for em in _dark_sounds:

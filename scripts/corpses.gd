@@ -1,0 +1,40 @@
+class_name Corpses
+extends RefCounted
+## Тела (CLAUDE.md §6): модели горожан и героя в позах мокап-анимаций, поза запечена в статичный меш
+## (CharacterModel.bake_pose), без скелета — один вызов отрисовки на материал в куске уровня.
+## Сожжённые ангелом — те же тела в сером пепле (material(..., ashen)).
+## Ставятся как предметы: QuarterProps.place(вид, ...) — вид из KINDS, точка у таза, лицом (головой) в −Z.
+
+## Вид → [модель, анимация, кадр (с; −1 — последний), пепел, сдвиг таза от точки (x, z), что это].
+const KINDS := {
+	"corpse_trampled": ["townsman", "fall_flat", -1.0, false, Vector2(0.0, 0.0), "затоптан в давке: ничком, руки вперёд"],
+	"corpse_trampled_f": ["townswoman", "fall_flat", -1.0, false, Vector2(0.0, 0.0), "затоптана в давке"],
+	"corpse_doorway": ["townsman", "fall_flat", -1.0, false, Vector2(0.0, 0.45), "в дверях: голова на улице, ноги в доме"],
+	"corpse_collapsed": ["townsman", "walk_collapse", -1.0, false, Vector2(0.0, 0.0), "шёл и упал"],
+	"corpse_soldier": ["hero", "walk_collapse", -1.0, false, Vector2(0.0, 0.0), "солдат гарнизона (та же туника, что у героя)"],
+	"corpse_lying": ["townsman", "lying_pose", -1.0, false, Vector2(0.0, 0.0), "лежит на спине"],
+	"corpse_ash": ["hero", "lying_pose", -1.0, true, Vector2(0.0, 0.0), "сожжён ангелом: серый пепел"],
+	"corpse_ash_f": ["townswoman", "dying", 0.0, true, Vector2(0.0, 0.0), "сожжена ангелом"],
+	"corpse_ash_kneel": ["townsman", "pray_kneel", 0.0, true, Vector2(0.0, 0.0), "сгорел на коленях"],
+}
+
+static var _meshes := {}
+
+
+static func has(kind: String) -> bool:
+	return KINDS.has(kind)
+
+
+## Статичный меш тела: таз в точке (плюс сдвиг из KINDS), голова в −Z.
+static func mesh(kind: String) -> Mesh:
+	if _meshes.has(kind):
+		return _meshes[kind]
+	var k: Array = KINDS[kind]
+	var m := CharacterModel.bake_pose(k[0], k[1], k[2], "Hips", k[4])
+	_meshes[kind] = m
+	return m
+
+
+static func material(kind: String) -> Material:
+	var k: Array = KINDS[kind]
+	return CharacterModel.material(k[0], k[3])

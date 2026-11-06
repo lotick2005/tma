@@ -100,6 +100,14 @@ func set_builder(builder: LevelBuilder, glows: Glows) -> void:
 ## Поставить предмет: MultiMesh для частых, иначе в общий пакет; коллизия — коробка по KINDS.
 ## scale — масштаб (дерево побольше, детская одежда поменьше).
 func place(kind: String, pos: Vector3, yaw: float, indoor: bool = false, scale: float = 1.0) -> void:
+	if Corpses.has(kind):
+		# Тело — модель персонажа в запечённой позе (scripts/corpses.gd), без коллизии
+		var cxf := Transform3D(Basis(Vector3.UP, yaw).scaled(Vector3.ONE * scale), pos)
+		PropRegistry.add(kind, cxf)
+		_b.layer = LevelBuilder.INTERIOR_LAYER if indoor else 1
+		_b.add_mesh(Corpses.mesh(kind), cxf, Corpses.material(kind))
+		_b.layer = 1
+		return
 	var inf := PropLibrary.info(kind)
 	if not _solid_ok and inf.get("collide", Vector3.ZERO) != Vector3.ZERO:
 		kind = "basket"

@@ -14,7 +14,8 @@ static func clear() -> void:
 
 
 static func add(kind: String, xf: Transform3D) -> void:
-	var aabb := PropLibrary.mesh(kind).get_aabb().grow(0.04)
+	var mesh := Corpses.mesh(kind) if Corpses.has(kind) else PropLibrary.mesh(kind)
+	var aabb := mesh.get_aabb().grow(0.04)
 	_items.append([kind, xf, aabb])
 
 

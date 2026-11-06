@@ -1,8 +1,12 @@
 extends Node3D
-## Руки героя — кости того же тела (hero_body.gd), ставятся двухзвенным IK от плеча до кисти.
-## Правая держит светильник там, где он виден в кадре; F — достать / убрать с анимацией,
-## пока анимация идёт, повторное нажатие игнорируется. Левая свободна и покачивается в такт шагу.
-## Если перед камерой стена — правая подтягивает светильник к груди, левая прижимается к телу.
+## Руки героя (CLAUDE.md §8) — кости модели hero (скелет Mixamo), поверх мокап-анимации тела (hero_body.gd).
+## Двухзвенный IK от плеча до кисти: RightUpperArm → RightLowerArm → RightHand (у левой так же).
+## Правая держит светильник там, где он виден в кадре; F — достать / убрать: рука плавно уходит
+## из позы анимации к светильнику и обратно, пока анимация идёт, повторное нажатие игнорируется.
+## Левая свободна — машет так, как в анимации ходьбы и бега. Если перед камерой стена — правая
+## подтягивает светильник к груди, левая прижимается к телу.
+## Сам IK — модификатор скелета (_ArmIK): он работает после анимации, каждый кадр.
+## Голова кивает вместе с камерой (кость Head) — это видно по тени. Старые руки — hero_arms_proc.gd.
 
 ## Светильник достали (true) или убрали (false). Срабатывает в начале анимации.
 signal lamp_changed(out: bool)
@@ -14,17 +18,21 @@ signal lamp_changed(out: bool)
 ## Стена ближе этого — руки начинают подтягиваться; ближе wall_pull_full — подтянуты полностью.
 @export var wall_pull_start := 0.6
 @export var wall_pull_full := 0.25
-## Покачивание свободной руки при ходьбе, м.
-@export var arm_swing := 0.07
 @export var body_path: NodePath = ^"../../../Body"
 @export var lamp_path: NodePath = ^"../../../Body/OilLamp"
 
 ## Светильник в кадре (в пространстве камеры): обычно и подтянутый к груди у стены.
 const LAMP_HELD := Transform3D(Basis(Vector3(0.5, 0.3244, -0.803), Vector3(0.0, 0.9272, 0.3746), Vector3(0.866, -0.1873, 0.4636)), Vector3(0.14, -0.13, -0.36))
 const LAMP_PULLED := Transform3D(Basis(Vector3(0.5, 0.3244, -0.803), Vector3(0.0, 0.9272, 0.3746), Vector3(0.866, -0.1873, 0.4636)), Vector3(0.21, -0.07, -0.19))
-## Сгиб пальцев, градусов: пустая рука и рука со светильником.
-const FINGERS_RELAXED := 25.0
-const FINGERS_HOLD := 60.0
+## Ладонь под светильником: от запястья вперёд по пальцам и вниз от дна светильника, м.
+const PALM_FORWARD := 0.075
+const PALM_BELOW := 0.025
+## Сгиб пальцев (указательный — «варежка»), градусов: пустая рука и рука со светильником.
+const FINGERS_HOLD := 50.0
+## Левая кисть у стены: от груди (кость UpperChest) в осях тела, м.
+const LEFT_PRESSED := Vector3(-0.13, -0.33, -0.16)
+## Наклон головы вслед за камерой: доля на кость Head (остальное — анимация шеи).
+const HEAD_FOLLOW := 0.8
 
 ## В руке ли светильник. Сохранять — через GameState.lamp_out (это делает Player).
 var lamp_out := true
@@ -33,23 +41,50 @@ var raise := 1.0
 
 var _tween: Tween
 var _pull := 0.0
-## Кисть (кость hand.R, начало — запястье) относительно светильника.
+## Кисть (кость RightHand, начало — запястье) относительно светильника.
 var _hand_from_lamp: Transform3D
 var _probe := SphereShape3D.new()
+var _ik: _ArmIK
+var _bones := {}
 
 @onready var _camera: Camera3D = get_parent()
 @onready var _body: HeroBody = get_node(body_path)
 @onready var _lamp: Node3D = get_node(lamp_path)
 
 
+## Модификатор скелета: вызывает руки после того, как анимация поставила позу.
+class _ArmIK:
+	extends SkeletonModifier3D
+	var arms: Node
+
+	func _process_modification_with_delta(_delta: float) -> void:
+		arms._apply()
+
+
 func _ready() -> void:
 	_probe.radius = 0.12
-	# Ладонь вверх под светильником, пальцы вперёд и чуть влево. У кости кисти пальцы — по −Y,
-	# ладонь правой руки — по −X, большой палец — по −Z.
-	var hand_basis := Basis(Vector3.UP, deg_to_rad(20.0)) * Basis(Vector3.DOWN, Vector3.BACK, Vector3.LEFT)
-	var fingers := -hand_basis.y
-	var wrist := LAMP_HELD.origin - fingers * 0.045 - Vector3.UP * 0.014
+	var skel := _body.skeleton
+	for side in ["Left", "Right"]:
+		for b in ["UpperArm", "LowerArm", "Hand", "IndexProximal", "IndexIntermediate", "IndexDistal"]:
+			_bones[side + b] = skel.find_bone(side + b)
+	for b in ["Head", "UpperChest", "Spine"]:
+		_bones[b] = skel.find_bone(b)
+	# Оси кисти по геометрии модели (оси костей после ретаргета — от Т-позы, а модель в A-позе):
+	# пальцы — к указательному пальцу, ладонь в позе покоя смотрит к бедру (+X у правой руки).
+	var hand := _bones["RightHand"] as int
+	var fingers_l := skel.get_bone_rest(_bones["RightIndexProximal"]).origin.normalized()
+	var palm_l := skel.get_bone_global_rest(hand).basis.inverse() * Vector3.RIGHT
+	var hand_geo := _frame(fingers_l, palm_l)
+	# В кадре: ладонь вверх под светильником, пальцы вперёд и чуть влево.
+	var fingers := Basis(Vector3.UP, deg_to_rad(20.0)) * Vector3.FORWARD
+	var palm := Vector3.UP
+	var hand_basis := _frame(fingers, palm) * hand_geo.inverse()
+	var wrist := LAMP_HELD.origin - fingers * PALM_FORWARD - palm * PALM_BELOW
 	_hand_from_lamp = LAMP_HELD.affine_inverse() * Transform3D(hand_basis, wrist)
+	_ik = _ArmIK.new()
+	_ik.name = "ArmIK"
+	_ik.arms = self
+	skel.add_child(_ik)
 
 
 func is_busy() -> bool:
@@ -76,30 +111,43 @@ func set_lamp_out(out: bool, instant: bool = false) -> void:
 
 
 func _process(delta: float) -> void:
-	var skel := _body.skeleton
-	var to_skel := skel.global_transform.affine_inverse()
 	_pull = lerpf(_pull, _wall_pull(), 1.0 - exp(-10.0 * delta))
-	var chest := skel.get_bone_global_pose(_body.bone("chest"))
-	var swing := sin(_body.step_phase) * arm_swing * minf(_body.step_amount, 1.5)
-
-	# Правая: от опущенной вдоль тела (светильник убран) до светильника в кадре
-	var lamp_cam := LAMP_HELD.interpolate_with(LAMP_PULLED, _pull)
-	var held := to_skel * _camera.global_transform * lamp_cam * _hand_from_lamp
-	var lowered := chest * Transform3D(Basis(), Vector3(0.22, -0.4, -swing))
-	var pole_r := Vector3(0.4, -0.2, 1.0).lerp(Vector3(0.7, -1.0, 0.2), raise)
-	_solve_arm("R", lowered.interpolate_with(held, raise), pole_r, false)
-	_curl("R", lerpf(FINGERS_RELAXED, FINGERS_HOLD, raise))
-
-	# Левая: свободна, чуть согнута, у стены прижимается к телу
-	var left := chest * Transform3D(Basis(), Vector3(-0.21 + 0.03 * _pull, -0.37, -0.1 + swing + 0.08 * _pull))
-	_solve_arm("L", left, Vector3(-0.4, -0.2, 1.0), true)
-	_curl("L", FINGERS_RELAXED)
-
-	# Светильник лежит в настоящей кисти, даже если рука не дотянулась
-	var hand := skel.get_bone_global_pose(_body.bone("hand.R"))
-	_lamp.global_transform = skel.global_transform * hand * _hand_from_lamp.affine_inverse()
 	_lamp.visible = raise > 0.02
 	_lamp.intensity = raise
+
+
+## Поза рук поверх анимации (из модификатора скелета).
+func _apply() -> void:
+	var skel := _body.skeleton
+	var to_skel := skel.global_transform.affine_inverse()
+	var body_basis := to_skel.basis * _body.global_basis
+
+	# Глядя в пол, корпус отклоняется назад (hero_body.gd), голова кивает вслед за камерой (видно по тени)
+	var right := (body_basis * Vector3.RIGHT).normalized()
+	var spine: int = _bones["Spine"]
+	_set_global_basis(spine, Basis(right, _body.lean_back()) * skel.get_bone_global_pose(spine).basis)
+	var hb: int = _bones["Head"]
+	var head_g := skel.get_bone_global_pose(hb)
+	var nod := Basis(right, _body.pitch * HEAD_FOLLOW - _body.lean_back())
+	_set_global_basis(hb, nod * head_g.basis)
+
+	# Правая: от позы анимации к светильнику в кадре
+	if raise > 0.001:
+		var lamp_cam := LAMP_HELD.interpolate_with(LAMP_PULLED, _pull)
+		var held := to_skel * _camera.global_transform * lamp_cam * _hand_from_lamp
+		var pole := body_basis * Vector3(0.7, -1.0, 0.25)
+		_solve_arm("Right", held, pole, false, raise)
+		_curl("Right", FINGERS_HOLD * raise)
+
+	# Левая: у стены прижимается к телу
+	if _pull > 0.001:
+		var chest := skel.get_bone_global_pose(_bones["UpperChest"]).origin
+		var target := Transform3D(Basis(), chest + body_basis * LEFT_PRESSED)
+		_solve_arm("Left", target, body_basis * Vector3(-0.6, -1.0, 0.4), true, _pull)
+
+	# Светильник лежит в настоящей кисти, даже если рука не дотянулась
+	var hand := skel.get_bone_global_pose(_bones["RightHand"])
+	_lamp.global_transform = skel.global_transform * hand * _hand_from_lamp.affine_inverse()
 
 
 ## 1 — стена вплотную перед камерой, 0 — далеко.
@@ -116,16 +164,22 @@ func _wall_pull() -> float:
 	return 1.0 - smoothstep(wall_pull_full, wall_pull_start, dist)
 
 
-## Двухзвенный IK: плечо → локоть → запястье. pole — куда смотрит локоть.
-## hand_follows — кисть продолжает предплечье, иначе берёт поворот из target.
-func _solve_arm(side: String, target: Transform3D, pole: Vector3, hand_follows: bool) -> void:
-	var skel: Skeleton3D = _body.skeleton
-	var ua := _body.bone("upper_arm." + side)
-	var fa := _body.bone("forearm." + side)
-	var hb := _body.bone("hand." + side)
-	var a := HeroModel.UPPER_ARM
-	var b := HeroModel.FOREARM
-	var shoulder := skel.get_bone_global_pose(ua).origin
+## Двухзвенный IK в пространстве скелета: плечо → локоть → запястье. pole — куда смотрит локоть.
+## Кости поворачиваются по кратчайшей дуге от позы анимации (без лишнего скручивания).
+## hand_follows — кисть едет вместе с предплечьем, иначе берёт поворот из target.
+## weight — доля IK поверх позы анимации (0 — анимация, 1 — IK).
+func _solve_arm(side: String, target: Transform3D, pole: Vector3, hand_follows: bool, weight: float) -> void:
+	var skel := _body.skeleton
+	var ua: int = _bones[side + "UpperArm"]
+	var fa: int = _bones[side + "LowerArm"]
+	var hb: int = _bones[side + "Hand"]
+	var a := skel.get_bone_rest(fa).origin.length()
+	var b := skel.get_bone_rest(hb).origin.length()
+	var parent_g := skel.get_bone_global_pose(skel.get_bone_parent(ua))
+	var ua_g := skel.get_bone_global_pose(ua)
+	var fa_g := skel.get_bone_global_pose(fa)
+	var hb_g := skel.get_bone_global_pose(hb)
+	var shoulder := ua_g.origin
 	var to_target := target.origin - shoulder
 	var d := clampf(to_target.length(), 0.05, (a + b) * 0.999)
 	var dir := to_target.normalized()
@@ -133,30 +187,50 @@ func _solve_arm(side: String, target: Transform3D, pole: Vector3, hand_follows: 
 	var out := (pole - dir * pole.dot(dir)).normalized()
 	var elbow := shoulder + dir * a * cos_a + out * a * sqrt(1.0 - cos_a * cos_a)
 	var wrist := shoulder + dir * d
-	# Ось локтя: в покое это +X кости, сгиб вперёд
-	var hinge := (elbow - shoulder).cross(wrist - elbow)
-	if hinge.length_squared() < 1e-8:
-		hinge = dir.cross(out)
-	var fore_basis := _limb_basis(wrist - elbow, hinge)
-	_set_global_basis(ua, _limb_basis(elbow - shoulder, hinge))
-	_set_global_basis(fa, fore_basis)
-	_set_global_basis(hb, fore_basis if hand_follows else target.basis.orthonormalized())
+	var ua_new := _turn(fa_g.origin - ua_g.origin, elbow - shoulder) * ua_g.basis.orthonormalized()
+	var fa_cur := ua_new * ua_g.basis.orthonormalized().inverse() * fa_g.basis.orthonormalized()
+	var fa_new := _turn(fa_cur * skel.get_bone_rest(hb).origin, wrist - elbow) * fa_cur
+	var hb_new: Basis
+	if hand_follows:
+		hb_new = fa_new * fa_g.basis.orthonormalized().inverse() * hb_g.basis.orthonormalized()
+	else:
+		hb_new = target.basis.orthonormalized()
+	# Смешать с анимацией и записать локальные повороты по цепочке
+	ua_new = ua_g.basis.orthonormalized().slerp(ua_new, weight)
+	fa_new = fa_g.basis.orthonormalized().slerp(fa_new, weight)
+	hb_new = hb_g.basis.orthonormalized().slerp(hb_new, weight)
+	skel.set_bone_pose_rotation(ua, (parent_g.basis.orthonormalized().inverse() * ua_new).get_rotation_quaternion())
+	skel.set_bone_pose_rotation(fa, (ua_new.inverse() * fa_new).get_rotation_quaternion())
+	skel.set_bone_pose_rotation(hb, (fa_new.inverse() * hb_new).get_rotation_quaternion())
 
 
-## Базис кости конечности: −Y вдоль конечности, X — ось сгиба.
-func _limb_basis(along: Vector3, hinge: Vector3) -> Basis:
-	var y := -along.normalized()
-	var x := (hinge - y * hinge.dot(y)).normalized()
+## Поворот по кратчайшей дуге от направления from к to.
+func _turn(from: Vector3, to: Vector3) -> Basis:
+	var f := from.normalized()
+	var t := to.normalized()
+	if f.dot(t) > 0.99999:
+		return Basis()
+	if f.dot(t) < -0.9999:
+		return Basis(f.cross(Vector3.UP).normalized(), PI)
+	return Basis(Quaternion(f, t))
+
+
+## Базис по двум направлениям: X — a, Y — h (без составляющей вдоль a).
+func _frame(a: Vector3, h: Vector3) -> Basis:
+	var x := a.normalized()
+	var y := (h - x * h.dot(x)).normalized()
 	return Basis(x, y, x.cross(y))
 
 
 func _set_global_basis(bone_idx: int, global_basis: Basis) -> void:
-	var skel: Skeleton3D = _body.skeleton
-	var parent_basis := skel.get_bone_global_pose(skel.get_bone_parent(bone_idx)).basis
+	var skel := _body.skeleton
+	var parent_basis := skel.get_bone_global_pose(skel.get_bone_parent(bone_idx)).basis.orthonormalized()
 	skel.set_bone_pose_rotation(bone_idx, (parent_basis.inverse() * global_basis).get_rotation_quaternion())
 
 
-## Пальцы сгибаются к ладони: у правой ладонь по −X, у левой по +X.
+## Указательный палец («варежка» — вся кисть одним блоком) сгибается к ладони вокруг своей +X.
 func _curl(side: String, deg: float) -> void:
-	var sign_z := -1.0 if side == "R" else 1.0
-	_body.skeleton.set_bone_pose_rotation(_body.bone("fingers." + side), Quaternion(Vector3.BACK, deg_to_rad(deg) * sign_z))
+	var skel := _body.skeleton
+	for b in ["IndexProximal", "IndexIntermediate", "IndexDistal"]:
+		var i: int = _bones[side + b]
+		skel.set_bone_pose_rotation(i, skel.get_bone_pose_rotation(i) * Quaternion(Vector3.RIGHT, deg_to_rad(deg / 3.0)))
