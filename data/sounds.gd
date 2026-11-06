@@ -49,11 +49,23 @@ const SOUNDS := {
 	# ─── Фон (не 3D, слой с плавным фейдом) ───────────────────────────────────────
 	## Фон тьмы: 10 мин, стерео. Паузы почти тишины — фича, не трогать.
 	"ambient_drone": {"file": "res://audio/ambient_drone.ogg", "bus": "Ambience", "db": -3.0},
-	## Дневной фон площади: гомон толпы (вступление; пока — «день» в панели 0).
-	"ambience_day_crowd": {"synth": "day_crowd", "bus": "Ambience", "db": -10.0, "loop": true},
+	## Ветер во тьме: 24 с, стерео, бесшовная петля — второй, тихий слой под ambient_drone (слой "wind").
+	## Гаснет вместе с фоном перед ангелом (шина Ambience). Заметно тише гула.
+	"wind_drone": {"file": "res://audio/wind_drone.ogg", "bus": "Ambience", "db": -13.0, "loop": true},
+	## Дневной фон площади: гомон базара (вступление; «день» в панели 0). 74 с, бесшовная петля.
+	## Чуть тише своих шагов вблизи. Заглушка (synth "day_crowd") оставлена в sound_synth.gd.
+	"ambience_day_crowd": {"file": "res://audio/market_crowd.ogg", "bus": "Ambience", "db": -13.0, "loop": true},
+	## Тёмный гул с тихим пульсом (54,5 с, петля): только закрытые страшные места — подвал с мёртвыми, канал.
+	## Включается зоной поверх фона тьмы. ПОКА НИГДЕ НЕ ВКЛЮЧЁН.
+	"dark_ambience": {"file": "res://audio/dark_ambience.ogg", "bus": "Ambience", "db": -6.0, "loop": true},
+
+	# ─── Музыка ──────────────────────────────────────────────────────────────────
+	## Индастриал-петля 107 уд/мин (17,9 с = 32 доли). ПОКА НЕ ИСПОЛЬЗУЕТСЯ (кандидат — погоня ангела или меню).
+	"industrial_loop": {"file": "res://audio/industrial_loop.ogg", "bus": "Music", "db": -10.0, "loop": true},
 
 	# ─── Дневные 3D-источники на площади (вступление, этап 4) ─────────────────────
-	"birds": {"synth": "birds", "bus": "Ambience", "db": -8.0, "loop": true, "unit": 6.0, "range": 60.0},
+	## Птицы утром: 100 с, моно, петля; у каждого источника — свой случайный старт (SoundEmitter.resume).
+	"birds": {"file": "res://audio/birds_morning_mono.ogg", "bus": "Ambience", "db": -6.0, "loop": true, "unit": 6.0, "range": 60.0},
 	"dogs": {"synth": "dogs", "bus": "Ambience", "db": -6.0, "loop": true, "unit": 8.0, "range": 70.0},
 	"distant_singing": {"synth": "distant_singing", "bus": "Ambience", "db": -4.0, "loop": true, "unit": 10.0, "range": 90.0},
 

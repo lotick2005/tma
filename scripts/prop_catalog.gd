@@ -36,25 +36,14 @@ func _ready() -> void:
 		i += 1
 
 
-## Меши героя (тело, руки, голова) — один раз на весь каталог.
+## Фигура героя для масштаба — модель hero в позе idle, запечённая в статичный меш (один на весь каталог).
 func _hero_meshes() -> Array:
-	var skel := Skeleton3D.new()
-	HeroModel.build_skeleton(skel)
-	var out := [HeroModel.build_body(skel), HeroModel.build_arms(skel), HeroModel.build_head(skel)]
-	skel.free()
-	return out
+	return [CharacterModel.bake_pose("hero", "idle", 0.0)]
 
 
-## Фигура героя в позе покоя: свой скелет и скин, меши общие.
 func _add_hero(pos: Vector3, meshes: Array) -> void:
-	var skel := Skeleton3D.new()
-	HeroModel.build_skeleton(skel)
-	skel.position = pos
-	add_child(skel)
-	var skin := skel.create_skin_from_rest_transforms()
-	for m: Mesh in meshes:
-		var mi := MeshInstance3D.new()
-		mi.mesh = m
-		mi.skin = skin
-		mi.skeleton = NodePath("..")
-		skel.add_child(mi)
+	var mi := MeshInstance3D.new()
+	mi.mesh = meshes[0]
+	mi.material_override = CharacterModel.material("hero")
+	mi.position = pos
+	add_child(mi)

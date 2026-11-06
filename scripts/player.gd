@@ -1,7 +1,8 @@
 class_name Player
 extends CharacterBody3D
 ## Герой: вид от первого лица, ходьба, бег с выносливостью, присед, покачивание камеры.
-## Тело со скелетом — hero_body.gd, руки и светильник — hero_arms.gd (F — достать / убрать).
+## Тело (модель hero, скелет Mixamo, мокап-анимации) — hero_body.gd, руки и светильник — hero_arms.gd
+## (F — достать / убрать).
 ## Курсором управляет экран «Кликни, чтобы начать» (scripts/click_to_start.gd),
 ## здесь только обзор, пока курсор захвачен.
 
@@ -153,6 +154,8 @@ func _physics_process(delta: float) -> void:
 	_update_bob(delta, moving)
 	var speed_ratio := horizontal.length() / walk_speed if moving else 0.0
 	_body.update_pose(_head.position.y, _head.rotation.x, _bob_phase, speed_ratio)
+	_body.set_motion(transform.basis.inverse() * Vector3(velocity.x, 0.0, velocity.z) if moving else Vector3.ZERO,
+		_crouched, walk_speed, run_speed)
 
 
 # ─── Для катсцен (scripts/cutscene_player.gd) ────────────────────────────────
