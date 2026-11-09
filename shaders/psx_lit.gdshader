@@ -5,6 +5,7 @@
 //   psx_affine_near — ближе этого расстояния (м) аффинность плавно гаснет, чтобы вплотную у стены не было каши;
 //   psx_fog_color, psx_fog_start, psx_fog_end — цвет тумана и где он начинается и где закрывает всё (м);
 //   psx_light_max   — сколько максимум даёт один источник света: вплотную к огню нет белого пятна;
+// near_discard (у материала) — своё тело героя не рисуется ближе этого к камере.
 shader_type spatial;
 render_mode specular_disabled;
 
@@ -24,6 +25,9 @@ uniform float self_illum : hint_range(0.0, 1.0) = 0.0;
 uniform float self_illum_shade : hint_range(0.0, 1.0) = 1.0;
 // Цвет подсветки: для рук — цвет огня.
 uniform vec3 self_illum_color : source_color = vec3(1.0);
+// Не рисовать то, что ближе этого расстояния к камере, м (0 — выкл). Только для своего тела героя:
+// камера в голове, и шея, плечи, голова изнутри не должны попадать в кадр (тень рисует отдельный меш).
+uniform float near_discard = 0.0;
 
 // xy — UV, умноженные на w; z — сам w. Деление во fragment() убирает перспективную коррекцию.
 varying vec3 affine_uv;
@@ -48,6 +52,9 @@ void vertex() {
 }
 
 void fragment() {
+	if (near_discard > 0.0 && length(VERTEX) < near_discard) {
+		discard;
+	}
 	vec2 uv = mix(UV, affine_uv.xy / affine_uv.z, affine_k);
 	vec4 tex = texture(albedo_texture, uv);
 	// Итог = свет × albedo + emission, поэтому так получается mix(освещённый цвет, туман, fog_k)

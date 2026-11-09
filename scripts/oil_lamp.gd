@@ -1,15 +1,19 @@
 extends Node3D
 ## «Иродианский» глиняный масляный светильник Иудеи I века: круглое тело размером с ладонь,
 ## отверстие для масла сверху, широкий плоский носик, срезанный ножом, без ручки.
-## Огонёк на кончике носика мерцает вместе со светом. Модель строится кодом.
+## Модель — models/oil_lamp.glb (Meshy, см. models/CREDITS.md): в файле носик смотрит на −X, огонь на кончике
+## носика ≈ (−0,048; 0,033; 0). Здесь она повёрнута носиком в −Z, и середина дна тела — в начале узла
+## (на ней лежит ладонь, hero_arms.gd). Огонёк на кончике носика мерцает вместе со светом.
 
-## Кончик носика, где горит фитиль (в локальных координатах светильника, носик смотрит в −Z).
-const NOZZLE_TIP := Vector3(0.0, 0.018, -0.066)
-## Профиль тела (радиус, высота), м: дно → плечо → край отверстия → вниз в отверстие.
-const BODY_PROFILE := [
-	Vector2(0.0, 0.0), Vector2(0.022, 0.0), Vector2(0.036, 0.008), Vector2(0.038, 0.014),
-	Vector2(0.032, 0.022), Vector2(0.014, 0.026), Vector2(0.009, 0.021), Vector2(0.0, 0.019),
-]
+const MODEL := "res://models/oil_lamp.glb"
+## Середина круглого тела в файле модели (по X; носик дальше −0,025) — встаёт в начало узла.
+const BODY_CENTER_X := 0.012
+## Кончик носика, где горит фитиль (в осях файла модели).
+const TIP_IN_FILE := Vector3(-0.048, 0.033, 0.0)
+## Модель в узле: носик −X → −Z, тело — в начале узла.
+const MODEL_XF := Transform3D(Basis(Vector3.UP, -PI * 0.5), Vector3(0.0, 0.0, -BODY_CENTER_X))
+## Кончик носика в осях узла.
+var nozzle_tip: Vector3 = MODEL_XF * TIP_IN_FILE
 
 @export var light_color := Color(1.0, 0.62, 0.3)
 @export var light_energy := 0.6
@@ -38,7 +42,8 @@ var _flame: MeshInstance3D
 var _clay: ShaderMaterial
 
 @onready var _light: OmniLight3D = $Light
-@onready var _light_origin: Vector3 = _light.position
+## Свет — чуть над огоньком.
+@onready var _light_origin: Vector3 = nozzle_tip + Vector3(0.0, 0.015, 0.0)
 
 
 func _ready() -> void:
@@ -71,22 +76,15 @@ func _process(delta: float) -> void:
 
 
 func _build_model() -> void:
-	_clay = PsxMaterial.make(ProcTextures.mottled(64, Color(0.6, 0.31, 0.19), 0.05, 0.12, 7))
-	var body := MeshInstance3D.new()
-	body.mesh = PsxMesh.lathe(PackedVector2Array(BODY_PROFILE), 8, 0.05)
-	# Носик: от тела вперёд, к концу шире и площе, торец срезан прямо
-	var nozzle := MeshInstance3D.new()
-	nozzle.mesh = PsxMesh.hexahedron([
-		Vector3(-0.011, 0.006, -0.026), Vector3(0.011, 0.006, -0.026),
-		Vector3(0.015, 0.008, -0.07), Vector3(-0.015, 0.008, -0.07),
-		Vector3(-0.011, 0.021, -0.026), Vector3(0.011, 0.021, -0.026),
-		Vector3(0.015, 0.018, -0.07), Vector3(-0.015, 0.018, -0.07),
-	], 0.05)
-	for m in [body, nozzle]:
+	_clay = CharacterModel.material("oil_lamp").duplicate()
+	_clay.set_shader_parameter("self_illum_color", light_color)
+	var inst: Node3D = (load(MODEL) as PackedScene).instantiate()
+	inst.transform = MODEL_XF
+	add_child(inst)
+	for m: MeshInstance3D in inst.find_children("*", "MeshInstance3D", true, false):
 		m.material_override = _clay
 		m.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
 		m.layers = 1 << (Player.VIEW_LAYER - 1)
-		add_child(m)
 
 	var flame_mat := StandardMaterial3D.new()
 	flame_mat.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED
@@ -103,5 +101,5 @@ func _build_model() -> void:
 	_flame.material_override = flame_mat
 	_flame.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
 	_flame.layers = 1 << (Player.VIEW_LAYER - 1)
-	_flame.position = NOZZLE_TIP
+	_flame.position = nozzle_tip
 	add_child(_flame)

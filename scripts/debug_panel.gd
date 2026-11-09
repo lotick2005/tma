@@ -8,6 +8,8 @@ extends CanvasLayer
 ## (PropRegistry). По этим именам удобно называть предметы в отзывах. Работает и с закрытой панелью.
 ## Страница «Звук»: ползунок «Угроза» (ThreatDirector.manual_threat), громкость шин, «ложная тревога сейчас»,
 ## «заглушить фон», «показать звуковые зоны и источники».
+## Страница «Тело»: камера в голове, радиус невидимости тела, поворот тела, место светильника, пружина руки
+## (то, что подбирается на глаз; клавиша 6 — посмотреть на себя со стороны).
 
 const FONT_SIZE := 8
 ## Дальность луча подписей предметов, м.
@@ -20,11 +22,12 @@ var _level: Node
 var _sun: DirectionalLight3D
 var _lamp: Node
 var _body: HeroBody
+var _arms: Node
 var _panel: PanelContainer
 var _out: LineEdit
 var _labels_on := false
-## Открыта страница «Звук» (иначе «Картинка»).
-var _sound_page := false
+## Открытая страница: 0 — «Картинка», 1 — «Звук», 2 — «Тело».
+var _page := 0
 var _pick_label: Label
 
 
@@ -84,6 +87,7 @@ func _bind() -> void:
 	_env = (envs[0] as WorldEnvironment).environment
 	_body = player.get_node("Body")
 	_lamp = player.get_node("Body/OilLamp")
+	_arms = player.get_node("Head/Camera3D/Arms")
 	var suns := level.find_children("*", "DirectionalLight3D", true, false)
 	if not suns.is_empty():
 		_sun = suns[0]
@@ -117,6 +121,9 @@ func _build() -> void:
 	var snd_btn := Button.new()
 	snd_btn.text = "Звук"
 	head.add_child(snd_btn)
+	var body_btn := Button.new()
+	body_btn.text = "Тело"
+	head.add_child(body_btn)
 
 	var pic := VBoxContainer.new()
 	pic.add_theme_constant_override("separation", 2)
@@ -124,12 +131,17 @@ func _build() -> void:
 	var snd := VBoxContainer.new()
 	snd.add_theme_constant_override("separation", 2)
 	box.add_child(snd)
-	var show_page := func(sound: bool) -> void:
-		_sound_page = sound
-		pic.visible = not sound
-		snd.visible = sound
-	pic_btn.pressed.connect(show_page.bind(false))
-	snd_btn.pressed.connect(show_page.bind(true))
+	var bod := VBoxContainer.new()
+	bod.add_theme_constant_override("separation", 2)
+	box.add_child(bod)
+	var show_page := func(page: int) -> void:
+		_page = page
+		pic.visible = page == 0
+		snd.visible = page == 1
+		bod.visible = page == 2
+	pic_btn.pressed.connect(show_page.bind(0))
+	snd_btn.pressed.connect(show_page.bind(1))
+	body_btn.pressed.connect(show_page.bind(2))
 
 	# ─── Картинка ───
 	var grid := _make_grid(pic)
@@ -175,7 +187,15 @@ func _build() -> void:
 	var legend := Label.new()
 	legend.text = "Зоны: синий — комната, лиловый — подвал, жёлтый — переулок, зелёный — площадка.\nШарик — источник: зелёный слышно напрямую, красный — за стеной."
 	snd.add_child(legend)
-	show_page.call(_sound_page)
+
+	# ─── Тело ───
+	var bgrid := _make_grid(bod)
+	for p in _body_params():
+		_add_slider(bgrid, p)
+	var body_hint := Label.new()
+	body_hint.text = "Светильник — от груди: x вправо, y вверх, z назад (вперёд — минус). 6 — камера со стороны."
+	bod.add_child(body_hint)
+	show_page.call(_page)
 
 	var hint := Label.new()
 	hint.text = "Строка значений (выдели или нажми «Копировать»):"
@@ -210,6 +230,48 @@ func _sound_params() -> Array:
 		params.append(["bus_" + bus.to_lower(), bus, -40.0, 6.0, 0.5, AudioManager.get_bus_volume(bus),
 			func(v: float) -> void: AudioManager.set_bus_volume(bus, v)])
 	return params
+
+
+## Тело и камера: что подбирается на глаз.
+func _body_params() -> Array:
+	var params := [
+		["eye_fwd", "Глаза вперёд", -0.05, 0.25, 0.005, _body.eye_forward, func(v: float) -> void: _body.eye_forward = v],
+		["eye_up", "Глаза вверх", 0.0, 0.2, 0.005, _body.eye_up, func(v: float) -> void: _body.eye_up = v],
+		["cam_smooth", "Камера жёстк.", 2.0, 60.0, 0.5, _body.camera_smooth,
+			func(v: float) -> void: _body.camera_smooth = v],
+		["cam_max", "Камера от оси", 0.05, 0.3, 0.005, _body.camera_max_offset,
+			func(v: float) -> void: _body.camera_max_offset = v],
+		["hide_r", "Тело не видно", 0.0, 0.5, 0.005, _body.hide_radius, func(v: float) -> void: _body.hide_radius = v],
+		["turn_thr", "Поворот от°", 20.0, 120.0, 1.0, _body.turn_threshold,
+			func(v: float) -> void: _body.turn_threshold = v],
+		["turn_rate", "Поворот °/с", 60.0, 720.0, 5.0, _body.turn_rate, func(v: float) -> void: _body.turn_rate = v],
+		["turn_move", "Доворот на ходу", 0.05, 1.0, 0.01, _body.turn_time_moving,
+			func(v: float) -> void: _body.turn_time_moving = v],
+		["breath", "Дыхание°", 0.0, 4.0, 0.05, _body.breath_deg, func(v: float) -> void: _body.breath_deg = v],
+		["spring", "Рука пружина", 2.0, 40.0, 0.5, _arms.lamp_spring, func(v: float) -> void: _arms.lamp_spring = v],
+		["damping", "Рука затух.", 0.1, 1.5, 0.01, _arms.lamp_damping, func(v: float) -> void: _arms.lamp_damping = v],
+		["lamp_yaw", "Носик влево°", -60.0, 90.0, 1.0, _arms.lamp_yaw, func(v: float) -> void: _arms.lamp_yaw = v],
+		["curl", "Сгиб пальцев°", 0.0, 140.0, 1.0, _arms.finger_curl, func(v: float) -> void: _arms.finger_curl = v],
+		["palm_up", "Ладонь ниже", -0.02, 0.08, 0.001, _arms.palm_up, func(v: float) -> void: _arms.palm_up = v],
+		["palm_fwd", "Ладонь вперёд", -0.03, 0.12, 0.001, _arms.palm_forward,
+			func(v: float) -> void: _arms.palm_forward = v],
+		["fing_yaw", "Пальцы влево°", -30.0, 120.0, 1.0, _arms.fingers_yaw, func(v: float) -> void: _arms.fingers_yaw = v],
+	]
+	for o in [["lamp", "Свет."], ["lamp_run", "Бег"], ["lamp_wall", "Стена"]]:
+		var prop: String = "lamp_offset" + o[0].trim_prefix("lamp")
+		var cur: Vector3 = _arms.get(prop)
+		for axis in 3:
+			var ax: String = ["x", "y", "z"][axis]
+			params.append([o[0] + "_" + ax, "%s %s" % [o[1], ax], -0.5, 0.5, 0.005, cur[axis], _offset_setter(prop, axis)])
+	return params
+
+
+## Ползунок одной оси Vector3-параметра рук.
+func _offset_setter(prop: String, axis: int) -> Callable:
+	return func(v: float) -> void:
+		var vec: Vector3 = _arms.get(prop)
+		vec[axis] = v
+		_arms.set(prop, vec)
 
 
 func _add_slider(grid: GridContainer, p: Array) -> void:
