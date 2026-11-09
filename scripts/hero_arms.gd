@@ -1,12 +1,15 @@
 extends Node3D
 ## Руки героя (CLAUDE.md §8) — кости модели hero (скелет Mixamo), поверх мокап-анимации тела (hero_body.gd).
 ## Двухзвенный IK от плеча до кисти: RightUpperArm → RightLowerArm → RightHand (у левой так же).
-## Правая держит светильник снизу: ладонь под дном, пальцы обхватывают его сбоку, большой палец — с другой стороны.
-## Место светильника задаётся от груди (кость Chest, в осях тела): lamp_offset — обычно, lamp_offset_run — на бегу
-## (ближе к телу), lamp_offset_wall — стена перед лицом. Светильник догоняет это место пружиной (lamp_spring,
+## Правая держит светильник снизу: ладонь горизонтально под дном, запястье прямое (пальцы — по направлению
+## предплечья), кончики пальцев чуть подогнуты к глине. Локоть согнут ~90–100°.
+## Место светильника задаётся от груди (кость Chest, в осях тела): lamp_offset — обычно (перед грудью, чуть
+## вправо, на высоте нижних рёбер; глядя прямо огонёк и носик — в правом нижнем углу кадра), lamp_offset_run —
+## на бегу, lamp_offset_wall — стена перед лицом. Светильник догоняет это место пружиной (lamp_spring,
 ## lamp_damping) — качается вместе с телом, с инерцией, без рывков руки; держится ровно (масло не льётся).
 ## F — достать / убрать: рука плавно уходит из позы анимации к светильнику и обратно, пока анимация идёт,
-## повторное нажатие игнорируется. Левая свободна — машет так, как в анимации; у стены прижимается к телу.
+## повторное нажатие игнорируется. Левая свободна — машет так, как в анимации (на бегу локоть согнут сильнее —
+## кисть заходит в кадр снизу слева); у стены прижимается к телу.
 ## Сам IK — модификатор скелета (_ArmIK): он работает после анимации и после позвоночника (hero_body.gd).
 ## Старые руки — hero_arms_proc.gd.
 
@@ -25,25 +28,31 @@ signal lamp_changed(out: bool)
 
 @export_group("Светильник")
 ## Где светильник (середина дна) относительно груди, м: x — вправо, y — вверх, z — назад (вперёд — минус).
-@export var lamp_offset := Vector3(0.12, 0.2, -0.36)
-## На бегу — ближе к телу.
-@export var lamp_offset_run := Vector3(0.1, 0.06, -0.25)
+@export var lamp_offset := Vector3(0.15, 0.23, -0.43)
+## На бегу (корпус наклонён вперёд — светильник выше по груди).
+@export var lamp_offset_run := Vector3(0.22, 0.4, -0.36)
+## В приседе.
+@export var lamp_offset_crouch := Vector3(0.24, 0.02, -0.5)
 ## Стена перед лицом — к груди.
 @export var lamp_offset_wall := Vector3(0.1, 0.1, -0.19)
 ## Носик повёрнут влево от «вперёд», град.
-@export var lamp_yaw := 20.0
+@export var lamp_yaw := 8.0
 ## Пружина: собственная частота, рад/с (больше — жёстче), и затухание (1 — без перелёта).
 @export var lamp_spring := 14.0
 @export var lamp_damping := 0.55
 
 @export_group("Кисть")
 ## Ладонь под светильником: середина дна — на столько вперёд по пальцам от запястья и над осью кисти, м.
-@export var palm_forward := 0.05
+@export var palm_forward := 0.065
 @export var palm_up := 0.027
-## Пальцы смотрят влево-вперёд под светильником: угол от «вперёд» влево, град.
-@export var fingers_yaw := 70.0
-## Сгиб пальцев («варежка» — указательный палец модели), град.
-@export var finger_curl := 110.0
+## Пальцы — по предплечью (запястье прямое) плюс столько влево, град.
+@export var fingers_yaw := 0.0
+## Сгиб пальцев («варежка» — указательный палец модели), град: кончики подогнуты к глине снизу.
+@export var finger_curl := 12.0
+## На бегу левый локоть сгибается сильнее, град, а кисть выше и впереди, чем в анимации, м (в осях тела):
+## рука работает, как у бегущего, и на махе вперёд заходит в кадр снизу слева.
+@export var left_run_flex := 30.0
+@export var left_run_lift := Vector3(0.0, 0.1, -0.08)
 
 ## Левая кисть у стены: от груди (кость UpperChest) в осях тела, м.
 const LEFT_PRESSED := Vector3(-0.13, -0.33, -0.16)
@@ -65,6 +74,8 @@ var _chest_rest: Basis
 var _lamp_pos := Vector3.ZERO
 var _lamp_vel := Vector3.ZERO
 var _lamp_ready := false
+## Направление предплечья правой руки (в осях Player, по горизонтали) — пальцы по нему.
+var _forearm := Vector3.FORWARD
 
 @onready var _camera: Camera3D = get_parent()
 @onready var _body: HeroBody = get_node(body_path)
@@ -133,9 +144,9 @@ func _process(delta: float) -> void:
 	_lamp.intensity = raise
 
 
-## Кисть относительно светильника: ладонь под дном, пальцы влево-вперёд, большой палец с другой стороны.
-func _hand_from_lamp() -> Transform3D:
-	var fingers := Basis(Vector3.UP, deg_to_rad(fingers_yaw)) * Vector3.FORWARD
+## Кисть относительно светильника: ладонь горизонтально под дном, пальцы — на fingers_rel (рад) левее носика.
+func _hand_from_lamp(fingers_rel := 0.0) -> Transform3D:
+	var fingers := Basis(Vector3.UP, fingers_rel) * Vector3.FORWARD
 	var palm := Vector3.UP
 	var hand_basis := _frame(fingers, palm) * _hand_geo.inverse()
 	var wrist := -fingers * palm_forward - palm * palm_up
@@ -147,13 +158,23 @@ func _apply(delta: float) -> void:
 	var skel := _body.skeleton
 	var to_skel := skel.global_transform.affine_inverse()
 	var body_basis := to_skel.basis * _body.global_basis
-	var hand_from_lamp := _hand_from_lamp()
 
-	# Место светильника: от груди, в осях тела, повёрнутых так же, как грудь (анимация + скрутка)
+	# Место светильника: от груди, в осях тела, повёрнутых так же, как грудь (анимация + скрутка + наклон):
+	# рука растёт из груди — наклонился, и светильник ушёл вперёд и вниз.
 	var chest := skel.get_bone_global_pose(_bones["Chest"])
 	var chest_rot := chest.basis.orthonormalized() * _chest_rest.inverse()
 	var frame := chest_rot * body_basis
-	var offset := lamp_offset.lerp(lamp_offset_run, _run).lerp(lamp_offset_wall, _pull)
+	var crouch_w := clampf(_body.weight("crouch_walk") + _body.weight("crouch_idle"), 0.0, 1.0)
+	if crouch_w > 0.0:
+		# В приседе грудь в анимациях сильно наклонена и повёрнута (crouch_walk — почти на 50° вправо),
+		# а светильник держат перед собой ровно: оси тела + доля скрутки взгляда, что ушла в позвоночник
+		var up := (body_basis * Vector3.UP).normalized()
+		var spine_twist := 0.0
+		for t: float in HeroBody.TWIST_SPINE:
+			spine_twist += t
+		var level := Basis(up, _body.twist * spine_twist) * body_basis
+		frame = Basis(frame.get_rotation_quaternion().slerp(level.get_rotation_quaternion(), crouch_w))
+	var offset := lamp_offset.lerp(lamp_offset_run, _run).lerp(lamp_offset_crouch, crouch_w).lerp(lamp_offset_wall, _pull)
 	var target_world := skel.global_transform * (chest.origin + frame * offset)
 	var target := _player.to_local(target_world)
 	if not _lamp_ready:
@@ -171,6 +192,11 @@ func _apply(delta: float) -> void:
 	var fwd := skel.global_transform.basis * (frame * Vector3.FORWARD)
 	var yaw := atan2(-fwd.x, -fwd.z) + deg_to_rad(lamp_yaw)
 	var lamp_xf := Transform3D(Basis(Vector3.UP, yaw), _player.to_global(_lamp_pos))
+	# Запястье прямое: пальцы по предплечью (с прошлого кадра), относительно носика
+	var fa_world := _player.global_basis * _forearm
+	var fingers_rel := wrapf(atan2(-fa_world.x, -fa_world.z) - yaw + deg_to_rad(fingers_yaw), -PI, PI)
+	fingers_rel = clampf(fingers_rel, deg_to_rad(-60.0), deg_to_rad(60.0))
+	var hand_from_lamp := _hand_from_lamp(fingers_rel)
 
 	# Правая: от позы анимации к светильнику
 	if raise > 0.001:
@@ -178,6 +204,23 @@ func _apply(delta: float) -> void:
 		var pole := body_basis * Vector3(0.8, -1.0, 0.35)
 		_solve_arm("Right", held, pole, false, raise)
 		_curl("Right", finger_curl * raise)
+		var fa := skel.get_bone_global_pose(_bones["RightHand"]).origin - skel.get_bone_global_pose(_bones["RightLowerArm"]).origin
+		var fa_p := _player.global_basis.inverse() * (skel.global_basis * fa)
+		fa_p.y = 0.0
+		if fa_p.length() > 0.02:
+			_forearm = _forearm.slerp(fa_p.normalized(), 1.0 - exp(-12.0 * delta))
+
+	# Левая на бегу: локоть согнут сильнее
+	var run_w := _body.weight("run") + _body.weight("run_back") * 0.5
+	if run_w > 0.01 and _pull < 0.99:
+		var w := run_w * (1.0 - _pull)
+		_flex("Left", left_run_flex * w)
+		var lh := skel.get_bone_global_pose(_bones["LeftHand"])
+		# Вперёд-вверх сильнее на махе вперёд: насколько кисть уже впереди плеча
+		var sh := skel.get_bone_global_pose(_bones["LeftUpperArm"]).origin
+		var ahead := clampf(-(body_basis.inverse() * (lh.origin - sh)).z / 0.25 + 0.5, 0.0, 1.0)
+		var lift := body_basis * (left_run_lift * (0.4 + 0.6 * ahead))
+		_solve_arm("Left", Transform3D(lh.basis, lh.origin + lift), body_basis * Vector3(-0.6, -1.0, 0.4), true, w)
 
 	# Левая: у стены прижимается к телу
 	if _pull > 0.001:
@@ -260,6 +303,23 @@ func _frame(a: Vector3, h: Vector3) -> Basis:
 	var x := a.normalized()
 	var y := (h - x * h.dot(x)).normalized()
 	return Basis(x, y, x.cross(y))
+
+
+## Согнуть локоть сильнее на deg (в плоскости плечо — локоть — кисть).
+func _flex(side: String, deg: float) -> void:
+	var skel := _body.skeleton
+	var ua := skel.get_bone_global_pose(_bones[side + "UpperArm"])
+	var fa := skel.get_bone_global_pose(_bones[side + "LowerArm"])
+	var hand := skel.get_bone_global_pose(_bones[side + "Hand"]).origin
+	var upper := fa.origin - ua.origin
+	var lower := hand - fa.origin
+	var axis := upper.cross(lower)
+	if axis.length() < 1e-4:
+		return
+	# Сгиб — поворот предплечья к плечу: от lower к -upper
+	var rot := Basis(axis.normalized(), deg_to_rad(deg))
+	var fa_new := rot * fa.basis.orthonormalized()
+	skel.set_bone_pose_rotation(_bones[side + "LowerArm"], (ua.basis.orthonormalized().inverse() * fa_new).get_rotation_quaternion())
 
 
 ## Указательный палец («варежка» — вся кисть одним блоком) сгибается к ладони вокруг своей +X.

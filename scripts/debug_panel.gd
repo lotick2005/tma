@@ -239,8 +239,11 @@ func _body_params() -> Array:
 		["eye_up", "Глаза вверх", 0.0, 0.2, 0.005, _body.eye_up, func(v: float) -> void: _body.eye_up = v],
 		["cam_smooth", "Камера жёстк.", 2.0, 60.0, 0.5, _body.camera_smooth,
 			func(v: float) -> void: _body.camera_smooth = v],
-		["cam_max", "Камера от оси", 0.05, 0.3, 0.005, _body.camera_max_offset,
-			func(v: float) -> void: _body.camera_max_offset = v],
+		["spine_max", "Корпус вниз°", 0.0, 50.0, 1.0, _body.spine_pitch_max,
+			func(v: float) -> void: _body.spine_pitch_max = v],
+		["spine_from", "Корпус с°", 0.0, 80.0, 1.0, _body.spine_pitch_from,
+			func(v: float) -> void: _body.spine_pitch_from = v],
+		["run_up", "Бег прямее°", 0.0, 30.0, 0.5, _body.run_upright, func(v: float) -> void: _body.run_upright = v],
 		["hide_r", "Тело не видно", 0.0, 0.5, 0.005, _body.hide_radius, func(v: float) -> void: _body.hide_radius = v],
 		["turn_thr", "Поворот от°", 20.0, 120.0, 1.0, _body.turn_threshold,
 			func(v: float) -> void: _body.turn_threshold = v],
@@ -257,7 +260,7 @@ func _body_params() -> Array:
 			func(v: float) -> void: _arms.palm_forward = v],
 		["fing_yaw", "Пальцы влево°", -30.0, 120.0, 1.0, _arms.fingers_yaw, func(v: float) -> void: _arms.fingers_yaw = v],
 	]
-	for o in [["lamp", "Свет."], ["lamp_run", "Бег"], ["lamp_wall", "Стена"]]:
+	for o in [["lamp", "Свет."], ["lamp_run", "Бег"], ["lamp_crouch", "Присед"], ["lamp_wall", "Стена"]]:
 		var prop: String = "lamp_offset" + o[0].trim_prefix("lamp")
 		var cur: Vector3 = _arms.get(prop)
 		for axis in 3:
