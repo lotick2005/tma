@@ -174,14 +174,14 @@ static func _atlas() -> ImageTexture:
 	var tiles := [
 		ProcTextures.mottled(64, Color(0.62, 0.36, 0.22), 0.05, 0.1, 61),          # CLAY
 		ProcTextures.mottled(64, Color(0.45, 0.25, 0.16), 0.05, 0.1, 62),          # CLAY_DARK
-		ProcTextures.wood(64, 4, Color(0.5, 0.36, 0.22), 63),                      # WOOD
-		ProcTextures.wood(64, 3, Color(0.3, 0.2, 0.13), 64),                       # WOOD_DARK
-		ProcTextures.mottled(64, Color(0.82, 0.78, 0.68), 0.04, 0.08, 65),         # LINEN
-		ProcTextures.hemmed_cloth(64, Color(0.55, 0.14, 0.12), 8, 66),             # CLOTH_RED
-		ProcTextures.stripes(64, 8, Color(0.75, 0.7, 0.6), Color(0.22, 0.25, 0.5), 67),  # CLOTH_BLUE
-		ProcTextures.checker(64, 16, Color(0.72, 0.6, 0.36), Color(0.58, 0.46, 0.26), 0.05, 68),  # STRAW
-		ProcTextures.mottled(64, Color(0.58, 0.5, 0.36), 0.08, 0.06, 69),          # SACK
-		ProcTextures.mottled(64, Color(0.78, 0.74, 0.64), 0.04, 0.08, 70),         # STONE
+		_ph(ProcTextures.wood(64, 4, Color(0.5, 0.36, 0.22), 63), "old_wood_floor", Color(0.5, 0.36, 0.22), Vector2i.ZERO, true),  # WOOD
+		_ph(ProcTextures.wood(64, 3, Color(0.3, 0.2, 0.13), 64), "dark_wooden_planks", Color(0.3, 0.2, 0.13), Vector2i.ZERO, true),  # WOOD_DARK
+		_ph(ProcTextures.mottled(64, Color(0.82, 0.78, 0.68), 0.04, 0.08, 65), "jogging_melange", Color(0.82, 0.78, 0.68)),  # LINEN
+		_ph(ProcTextures.hemmed_cloth(64, Color(0.55, 0.14, 0.12), 8, 66), "hessian_380", Color(0.55, 0.14, 0.12), Vector2i.ZERO, false, 8),  # CLOTH_RED
+		ProcTextures.with_grain(ProcTextures.stripes(64, 8, Color(0.75, 0.7, 0.6), Color(0.22, 0.25, 0.5), 67), "hessian_380", 0.8, true),  # CLOTH_BLUE
+		_ph(ProcTextures.checker(64, 16, Color(0.72, 0.6, 0.36), Color(0.58, 0.46, 0.26), 0.05, 68), "hessian_230", Color(0.7, 0.58, 0.34)),  # STRAW
+		_ph(ProcTextures.mottled(64, Color(0.58, 0.5, 0.36), 0.08, 0.06, 69), "hessian_230", Color(0.58, 0.5, 0.36), Vector2i(64, 64)),  # SACK
+		_ph(ProcTextures.mottled(64, Color(0.78, 0.74, 0.64), 0.04, 0.08, 70), "sandstone_blocks_04", Color(0.78, 0.74, 0.64), Vector2i(32, 32)),  # STONE
 		ProcTextures.mottled(64, Color(0.28, 0.27, 0.27), 0.05, 0.08, 71),         # BASALT
 		ProcTextures.mottled(64, Color(0.3, 0.42, 0.2), 0.08, 0.14, 72),           # LEAF
 		ProcTextures.wood(64, 6, Color(0.36, 0.3, 0.24), 73),                      # BARK
@@ -190,9 +190,9 @@ static func _atlas() -> ImageTexture:
 		ProcTextures.stripes(64, 16, Color(0.56, 0.46, 0.26), Color(0.42, 0.33, 0.18), 76),  # PALM — увядшая, бурая
 		ProcTextures.mottled(64, Color(0.26, 0.035, 0.04), 0.05, 0.14, 77),        # BLOOD — тёмно-бордовая
 		ProcTextures.mottled(64, Color(0.15, 0.025, 0.03), 0.05, 0.12, 78),        # BLOOD_DARK — запёкшаяся
-		ProcTextures.stripes(64, 6, Color(0.86, 0.84, 0.78), Color(0.72, 0.7, 0.64), 79),  # SHROUD — погребальные пелены
+		ProcTextures.with_grain(ProcTextures.stripes(64, 6, Color(0.86, 0.84, 0.78), Color(0.72, 0.7, 0.64), 79), "jogging_melange", 1.0, true),  # SHROUD — погребальные пелены
 		ProcTextures.mottled(64, Color(0.82, 0.81, 0.77), 0.05, 0.12, 80),         # DUST — погребальная пыль
-		ProcTextures.hemmed_cloth(64, Color(0.68, 0.48, 0.2), 6, 81),              # CLOTH_OCHRE
+		_ph(ProcTextures.hemmed_cloth(64, Color(0.68, 0.48, 0.2), 6, 81), "hessian_380", Color(0.68, 0.48, 0.2), Vector2i(64, 0), false, 6),  # CLOTH_OCHRE
 		ProcTextures.mottled(64, Color(0.045, 0.04, 0.035), 0.03, 0.05, 82),       # SOOT — тёмное углубление, копоть
 		ProcTextures.mottled(64, Color(0.24, 0.22, 0.21), 0.06, 0.1, 83),          # IRON
 		ProcTextures.mottled(64, Color(0.74, 0.72, 0.64), 0.08, 0.1, 84),          # COIN — серебро
@@ -206,6 +206,22 @@ static func _atlas() -> ImageTexture:
 		var t: Image = (tiles[i] as ImageTexture).get_image()
 		t.convert(Image.FORMAT_RGB8)
 		img.blit_rect(t, Rect2i(0, 0, 64, 64), Vector2i((i % 4) * 64, (i / 4) * 64))
+	return ImageTexture.create_from_image(img)
+
+
+## Плитка атласа из фото (кусок 64×64 в родном разрешении — ~0,5–1,5 м поверхности, по размеру предметов),
+## средний цвет подогнан к target; hem — тёмная кайма снизу (подол, край навеса). Не прочиталось фото — fallback.
+static func _ph(fallback: ImageTexture, name: String, target: Color, origin := Vector2i.ZERO, rotate := false,
+		hem := 0) -> ImageTexture:
+	var t := ProcTextures.photo_tile(name, 64, target, origin, 1.0, rotate)
+	if t == null:
+		return fallback
+	if hem == 0:
+		return t
+	var img := t.get_image()
+	for y in range(64 - hem, 64):
+		for x in 64:
+			img.set_pixel(x, y, img.get_pixel(x, y).darkened(0.35))
 	return ImageTexture.create_from_image(img)
 
 
