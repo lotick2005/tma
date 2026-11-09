@@ -3,7 +3,7 @@ extends RefCounted
 ## Общая библиотека мокап-анимаций Mixamo (res://animations/*.glb, CLAUDE.md §2 «Анимации людей»).
 ## Каждый файл импортируется как AnimationLibrary с ретаргетом через models/mixamo_bone_map.tres —
 ## дорожки вида "%GeneralSkeleton:Hips", поэтому любая анимация подходит любой модели из res://models/.
-## Здесь все 42 собраны в одну библиотеку (имя анимации = имя файла), плюс скорость записи для speed_scale.
+## Здесь все 43 собраны в одну библиотеку (имя анимации = имя файла), плюс скорость записи для speed_scale.
 ## Таблица — animations/README.md.
 
 const DIR := "res://animations/"
@@ -17,7 +17,7 @@ const LIST := {
 	"walk_injured": ["loop", 0.74], "walk_injured_fast": ["loop", 1.66], "walk_carry": ["loop", 1.16],
 	"carry_idle": ["loop", 0.0], "walk_back": ["loop", 1.05], "strafe_left": ["loop", 1.61],
 	"strafe_right": ["loop", 1.61], "run": ["loop", 4.11], "run_fast": ["loop", 5.5], "run_back": ["loop", 2.95],
-	"crouch_walk": ["loop", 1.32], "crouch_pose": ["pose", 0.0], "crawl": ["loop", 0.47],
+	"crouch_walk": ["loop", 1.32], "crouch_idle": ["loop", 0.0], "crouch_pose": ["pose", 0.0], "crawl": ["loop", 0.47],
 	"crawl_back": ["loop", 0.73],
 	"walk_start": ["once", 0.0], "walk_stop": ["once", 0.0], "terrified": ["once", 0.0], "shoved": ["once", 0.0],
 	"shoved_spin": ["once", 0.0], "fall_flat": ["once", 0.0], "walk_collapse": ["once", 0.0],
@@ -64,7 +64,7 @@ static func scale_for(anim_name: String, v: float) -> float:
 
 
 ## Поза — один кадр анимации anim_name в момент time (с) как отдельная анимация-поза (по ключу на дорожку).
-## Нужна для стоек, которых нет в библиотеке: стойка героя — конец walk_stop, присед стоя — кадр crouch_walk.
+## Нужна для стоек, которых нет в библиотеке: стойка героя — конец walk_stop.
 static func pose_from(anim_name: String, time: float) -> Animation:
 	var src := library().get_animation(anim_name)
 	var out := Animation.new()

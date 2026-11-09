@@ -30,6 +30,9 @@ var nozzle_tip: Vector3 = MODEL_XF * TIP_IN_FILE
 @export var flicker_wobble := 0.008
 ## Насколько огонь подсвечивает сам светильник и руки (0..1): свой свет их не освещает.
 @export_range(0.0, 1.0) var glow_strength := 0.7
+## Подсветка глины своим огнём: во сколько раз ярче glow (глина тёмная) и насколько темнее снизу (0 — ровно).
+@export var clay_glow := 1.7
+@export_range(0.0, 1.0) var clay_shade := 0.5
 
 ## Яркость света 0..1. Её меняет рука, когда достаёт или убирает светильник (scripts/hero_arms.gd).
 var intensity := 1.0
@@ -68,7 +71,7 @@ func _process(delta: float) -> void:
 	_light.light_energy = light_energy * k * intensity
 	_light.omni_range = light_range
 	glow = glow_strength * k * intensity
-	_clay.set_shader_parameter("self_illum", glow)
+	_clay.set_shader_parameter("self_illum", glow * clay_glow)
 	_light.position = _light_origin + Vector3(
 		_noise.get_noise_2d(_time, 17.0), _noise.get_noise_2d(_time, 43.0), _noise.get_noise_2d(_time, 71.0)
 	) * flicker_wobble
@@ -78,6 +81,7 @@ func _process(delta: float) -> void:
 func _build_model() -> void:
 	_clay = CharacterModel.material("oil_lamp").duplicate()
 	_clay.set_shader_parameter("self_illum_color", light_color)
+	_clay.set_shader_parameter("self_illum_shade", clay_shade)
 	var inst: Node3D = (load(MODEL) as PackedScene).instantiate()
 	inst.transform = MODEL_XF
 	add_child(inst)

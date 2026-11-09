@@ -8,14 +8,18 @@ extends Node3D
 ##   и голова всегда смотрит туда же, куда камера. Стоя тело не крутится за мышью; дальше turn_threshold тело
 ##   переступает (шаги вбок) и доворачивается. На ходу тело за turn_time_moving доворачивается к взгляду,
 ##   ноги — walk / walk_back / strafe / run относительно тела. Взгляд вниз-вверх — наклон позвоночника и шеи.
-## • Камера — на кости Head (eye_forward / eye_up в осях головы), со сглаживанием camera_smooth: качается сама,
-##   от анимации. По горизонтали не дальше camera_max_offset от оси капсулы — иначе тело чуть отходит назад
-##   (бег и присед наклоняют корпус вперёд, а камера не должна уйти в стену).
-## • Своё тело не рисуется ближе hide_radius к камере (near_discard в psx_lit), тень — от отдельного целого меша.
+## • Камера — всегда в глазах: на кости Head (eye_forward / eye_up в осях головы), со сглаживанием camera_smooth,
+##   качается сама, от анимации. Тело под камеру не сдвигается. От стен — сфера camera_wall_radius от середины
+##   груди к глазам: упёрлась — камера останавливается у стены, тело стоит, где стояло.
+## • Взгляд вниз — в основном шея и голова; позвоночник добирает только остаток (не больше spine_pitch_max на весь
+##   корпус, в приседе — доля crouch_spine_pitch). Глядя прямо спина ровная.
+## • Голова — отдельный меш, в глазах не рисуется; шея, руки и грудь видны всегда. near_discard (hide_radius) —
+##   только страховка от ближней плоскости. Тень — от отдельного целого меша.
 ## • Стойка: конец walk_stop (ноги на ширине плеч, руки вдоль тела) + дыхание грудью (в библиотеке нет idle_breathing,
-##   а idle — боевая стойка). Присед стоя — кадр crouch_walk, где обе ступни на земле (crouch_idle нет).
+##   а idle — боевая стойка). Присед стоя — crouch_idle (глубокий присед), на ходу — crouch_walk (полуприсед),
+##   переход между ними — crouch_blend_time.
 ## • Шаги — по касанию ступней (кость стопы опустилась к земле): сигнал foot_down.
-## Меш делится по весам костей: тело (BODY_LAYER), руки (VIEW_LAYER, подсветка огнём), голова с шеей (видна только
+## Меш делится по весам костей: тело (BODY_LAYER), руки (VIEW_LAYER, подсветка огнём), голова (видна только
 ## катсцене с камерой вне глаз), плюс целый меш только для тени. Подол туники перевешен на таз и бёдра.
 ## Руки и светильник (IK) — hero_arms.gd, поверх. Старое процедурное тело — hero_body_proc.gd (выключено).
 
@@ -23,17 +27,29 @@ extends Node3D
 signal foot_down
 
 @export_group("Камера")
-## Глаза относительно кости Head в позе покоя, м: вперёд (лицо — ≈0,12) и вверх.
-@export var eye_forward := 0.12
-@export var eye_up := 0.095
+## Глаза относительно кости Head в позе покоя, м: вперёд и вверх (кость Head модели hero — у основания черепа,
+## 1,545 м; макушка 1,75 м). Глаза стоя — ≈1,63 м.
+@export var eye_forward := 0.075
+@export var eye_up := 0.085
 ## Сглаживание камеры, 1/с (больше — жёстче за головой).
 @export var camera_smooth := 20.0
-## Камера не дальше этого от оси капсулы по горизонтали, м: обычно и глядя в пол (голова уходит вперёд
-## над ступнями — иначе ноги закрывает живот).
-@export var camera_max_offset := 0.2
-@export var camera_max_offset_down := 0.32
-## Своё тело не рисуется ближе этого к камере, м.
-@export var hide_radius := 0.2
+## Сфера от груди к глазам: камера не заходит в стену ближе этого, м.
+@export var camera_wall_radius := 0.15
+## Страховка от ближней плоскости: своё тело не рисуется ближе этого к камере, м (голова скрыта отдельно).
+@export var hide_radius := 0.08
+
+@export_group("Осанка")
+## Взгляд вниз до этого угла — только шея и голова, град; дальше добавляется позвоночник.
+@export var spine_pitch_from := 40.0
+## Позвоночник (весь корпус) наклоняется не больше этого, град.
+@export var spine_pitch_max := 20.0
+## В приседе — такая доля наклона корпуса (crouch_walk и так сутулая).
+@export var crouch_spine_pitch := 0.15
+## На бегу корпус выпрямляется на столько, град (у run из Mixamo сильный наклон вперёд, голова низко).
+@export var run_upright := 10.0
+## В приседе корпус выпрямляется на столько, град: стоя (crouch_idle — голова далеко над коленями) и на ходу.
+@export var crouch_idle_upright := 65.0
+@export var crouch_walk_upright := 8.0
 
 @export_group("Поворот тела")
 ## Стоя: тело доворачивается, когда взгляд ушёл дальше этого угла, град.
@@ -56,16 +72,20 @@ signal foot_down
 @export_range(0.0, 1.0) var lamp_glow := 0.9
 ## Смешивание анимаций: за сколько секунд веса доходят до нужных.
 @export var blend_time := 0.18
+## Присел / встал, присед стоя ↔ на ходу (глубокий присед ↔ полуприсед), с.
+@export var crouch_blend_time := 0.35
 
-## Анимации движения. stand и crouch_still — позы (библиотека "hero", собираются из кадров при старте).
+## Анимации движения. stand — поза (библиотека "hero", собирается из кадра при старте).
 const CLIPS := ["stand", "walk", "walk_back", "strafe_left", "strafe_right", "run", "run_back", "crouch_walk",
-	"crouch_still"]
-## Стойка — последний кадр walk_stop; присед стоя — кадр crouch_walk, где обе ступни на земле.
+	"crouch_idle"]
+const CROUCH_CLIPS := ["crouch_walk", "crouch_idle"]
+## Стойка — последний кадр walk_stop; crouch_walk трогается с кадра, где обе ступни на земле.
 const STAND_FROM := ["walk_stop", 3.0]
-const CROUCH_FROM := ["crouch_walk", 0.8]
+const CROUCH_WALK_START := 0.8
 ## Доли скрутки и наклона по позвоночнику (Spine, Chest, UpperChest); остальное — шея и голова.
 const TWIST_SPINE := [0.15, 0.15, 0.2]
-const PITCH_DOWN_SPINE := [0.2, 0.2, 0.2]
+## Доли наклона корпуса вниз (сумма 1 — весь наклон spine_pitch_max) и вверх (доля взгляда).
+const PITCH_DOWN_SPINE := [0.3, 0.35, 0.35]
 const PITCH_UP_SPINE := [0.03, 0.04, 0.08]
 ## Доля оставшегося поворота головы, которую берёт шея.
 const NECK_SHARE := 0.4
@@ -107,7 +127,6 @@ var _bones := {}
 var _head_fwd_l := Vector3.FORWARD
 var _head_up_l := Vector3.UP
 var _head_rest: Transform3D
-var _shift := Vector2.ZERO
 var _step_offset := 0.0
 var _cam_pos := Vector3.ZERO
 var _cam_ready := false
@@ -169,13 +188,14 @@ func _build_meshes() -> void:
 		var left := smoothstep(-0.09, 0.09, p.x)  # левая нога — +X модели
 		return {hips: 1.0 - legs, leg_l: legs * (0.15 + 0.7 * left), leg_r: legs * (0.15 + 0.7 * (1.0 - left))}
 	var mesh := CharacterModel.reweight(src.mesh, skirt)
-	var head_bones := [sk.find_bone("Neck"), sk.find_bone("Head"), sk.find_bone("mixamorig_HeadTop_End")]
+	# Скрыта только голова: шея остаётся в теле, иначе глядя в пол виден ворот изнутри
+	var head_bones := [sk.find_bone("Head"), sk.find_bone("mixamorig_HeadTop_End")]
 	var arm_bones := []
 	for side in ["Left", "Right"]:
 		for b in ["UpperArm", "LowerArm", "Hand", "IndexProximal", "IndexIntermediate", "IndexDistal"]:
 			arm_bones.append(sk.find_bone(side + b))
 		arm_bones.append(sk.find_bone("mixamorig_%sHandIndex4" % side))
-	# 0 — тело, 1 — руки, 2 — голова
+	# 0 — тело (с шеей), 1 — руки, 2 — голова
 	var classify := func(w: Dictionary) -> int:
 		var head := 0.0
 		var arm := 0.0
@@ -208,7 +228,7 @@ func _build_meshes() -> void:
 	_body_mats.append(_arms_mat)
 	_skinned("Arms", parts[1], _arms_mat, 1 << (Player.VIEW_LAYER - 1))
 
-	# Голова с шеей — только для камеры вне глаз (катсцена, клавиша 6)
+	# Голова — только для камеры вне глаз (катсцена, клавиша 6)
 	var head_mat: ShaderMaterial = CharacterModel.material("hero").duplicate()
 	_body_mats.append(head_mat)
 	_head_mesh = _skinned("Head", parts[2], head_mat, body_layer)
@@ -234,17 +254,16 @@ func _skinned(node_name: String, mesh: Mesh, mat: Material, layers: int) -> Mesh
 func _build_tree() -> void:
 	var lib := AnimationLibrary.new()
 	lib.add_animation("stand", Anims.pose_from(STAND_FROM[0], STAND_FROM[1]))
-	lib.add_animation("crouch_still", Anims.pose_from(CROUCH_FROM[0], CROUCH_FROM[1]))
 	var bt := AnimationNodeBlendTree.new()
 	var prev := ""
 	for i in CLIPS.size():
 		var c: String = CLIPS[i]
 		var a := AnimationNodeAnimation.new()
-		a.animation = ("hero/" + c) if c in ["stand", "crouch_still"] else c
+		a.animation = ("hero/" + c) if c == "stand" else c
 		bt.add_node("a_" + c, a, Vector2(0, i * 120))
 		var src := "a_" + c
 		if c == "crouch_walk":
-			# Трогается с места из присяда — с того же кадра, что и поза crouch_still
+			# Трогается с места с кадра, где обе ступни на земле
 			bt.add_node("seek_" + c, AnimationNodeTimeSeek.new(), Vector2(100, i * 120))
 			bt.connect_node("seek_" + c, 0, src)
 			src = "seek_" + c
@@ -271,6 +290,11 @@ func _build_tree() -> void:
 	# Плеер модели больше не нужен: двигает дерево
 	model.anim.active = false
 	_tree.active = true
+
+
+## Текущий вес анимации движения (0..1) — для рук.
+func weight(clip: String) -> float:
+	return float(_weights.get(clip, 0.0))
 
 
 ## Голову обычно не видно (камера в ней). Катсцена с камерой вне глаз и клавиша 6 показывают её.
@@ -313,8 +337,7 @@ func _process(delta: float) -> void:
 	_update_turn(delta)
 	_update_blend(delta)
 	_step_offset *= exp(-10.0 * delta)
-	var shift := basis.inverse() * Vector3(_shift.x, 0.0, _shift.y)
-	model.position = Vector3(shift.x, _step_offset, shift.z)
+	model.position = Vector3(0.0, _step_offset, 0.0)
 
 
 ## Тело и взгляд: стоя — тело стоит, пока взгляд не ушёл дальше turn_threshold; на ходу — догоняет взгляд.
@@ -366,13 +389,13 @@ func _update_blend(delta: float) -> void:
 	var scale := {}
 	if _crouched:
 		var cm := maxf(move, turn_w)
-		target["crouch_still"] = 1.0 - cm
+		target["crouch_idle"] = 1.0 - cm
 		target["crouch_walk"] = cm
 		var sp := speed if move > turn_w else 0.9
 		# Назад в приседе — та же ходьба задом наперёд
 		scale["crouch_walk"] = clampf(Anims.scale_for("crouch_walk", sp), 0.3, 2.0) * (-1.0 if v.y < -0.1 else 1.0)
 		if _weights["crouch_walk"] < 0.05:
-			_tree.set("parameters/seek_crouch_walk/seek_request", CROUCH_FROM[1])
+			_tree.set("parameters/seek_crouch_walk/seek_request", CROUCH_WALK_START)
 	else:
 		target["stand"] = 1.0 - maxf(move, turn_w)
 		if move > 0.0:
@@ -393,7 +416,12 @@ func _update_blend(delta: float) -> void:
 			target["strafe_left" if _turn_dir > 0.0 else "strafe_right"] = turn_w
 		for c in ["walk", "walk_back", "strafe_left", "strafe_right", "run", "run_back"]:
 			scale[c] = clampf(Anims.scale_for(c, speed), 0.3, 2.5) if move > 0.0 else 0.9
-	var k := 1.0 - exp(-delta / maxf(blend_time, 0.01) * 3.0)
+	# Присед — медленнее: тело опускается на 0,8 м, камера едет вместе с головой без рывка
+	var crouching := _crouched
+	for c: String in CROUCH_CLIPS:
+		crouching = crouching or _weights[c] > 0.02
+	var bt := crouch_blend_time if crouching else blend_time
+	var k := 1.0 - exp(-delta / maxf(bt, 0.01) * 3.0)
 	var acc := 0.0
 	for c: String in CLIPS:
 		_weights[c] = lerpf(_weights[c], target[c], k)
@@ -401,7 +429,7 @@ func _update_blend(delta: float) -> void:
 		acc += _weights[c]
 		if c != "stand":
 			_tree.set("parameters/b_%s/blend_amount" % c, _weights[c] / acc if acc > 1e-4 else 0.0)
-	still = clampf(_weights["stand"] + _weights["crouch_still"], 0.0, 1.0)
+	still = clampf(_weights["stand"] + _weights["crouch_idle"], 0.0, 1.0)
 
 
 # ─── После анимации (модификатор скелета) ────────────────────────────────────
@@ -414,6 +442,17 @@ func _apply(delta: float) -> void:
 	var up := (to_skel.basis * Vector3.UP).normalized()
 	var right := (to_skel.basis * global_basis.x).normalized()
 	var pitch := _player.get_pitch()
+	# Наклон корпуса: вниз — только то, что шея с головой не взяли (после spine_pitch_from), и не больше
+	# spine_pitch_max; в приседе почти ноль. На бегу корпус выпрямляется (минус — назад).
+	var crouch_w := clampf(_weights["crouch_walk"] + _weights["crouch_idle"], 0.0, 1.0)
+	var run_w := clampf(_weights["run"], 0.0, 1.0)
+	var body_pitch := 0.0
+	if pitch < 0.0:
+		var down := clampf(-pitch - deg_to_rad(spine_pitch_from), 0.0, deg_to_rad(spine_pitch_max))
+		body_pitch = -down * lerpf(1.0, crouch_spine_pitch, crouch_w)
+	body_pitch += deg_to_rad(run_upright) * run_w
+	body_pitch += deg_to_rad(crouch_idle_upright) * _weights["crouch_idle"]
+	body_pitch += deg_to_rad(crouch_walk_upright) * _weights["crouch_walk"]
 
 	# Позвоночник: доля скрутки и наклона на каждую кость; грудь дышит
 	var breath := sin(_time * TAU / maxf(breath_period, 0.5)) * deg_to_rad(breath_deg) * still
@@ -421,7 +460,7 @@ func _apply(delta: float) -> void:
 	var spine := ["Spine", "Chest", "UpperChest"]
 	for i in 3:
 		var tw: float = twist * TWIST_SPINE[i]
-		var pt: float = pitch * (PITCH_DOWN_SPINE[i] if pitch < 0.0 else PITCH_UP_SPINE[i])
+		var pt: float = body_pitch * PITCH_DOWN_SPINE[i] + (pitch * PITCH_UP_SPINE[i] if pitch > 0.0 else 0.0)
 		if i == 1:
 			pt -= breath
 		elif i == 2:
@@ -448,26 +487,37 @@ func _apply(delta: float) -> void:
 	_detect_steps()
 
 
-## Глаза — на кости Head; камера догоняет их сглаженно, по горизонтали — не дальше camera_max_offset.
+## Глаза — на кости Head; камера догоняет их сглаженно. Стена — сфера от груди к глазам.
 func _place_camera(delta: float) -> void:
 	var skel := skeleton
 	var eye_rest := _head_rest.origin + Vector3(0.0, eye_up, eye_forward)
 	var eye_skel := skel.get_bone_global_pose(_bones["Head"]) * (_head_rest.affine_inverse() * eye_rest)
 	var eye := _player.to_local(skel.global_transform * eye_skel)
-	# Без сдвига тела: где была бы голова, и насколько тело отвести назад
-	var raw := Vector2(eye.x - _shift.x, eye.z - _shift.y)
-	var down := smoothstep(deg_to_rad(20.0), deg_to_rad(75.0), -_player.get_pitch())
-	var limit := lerpf(camera_max_offset, camera_max_offset_down, down)
-	var excess := raw - raw.limit_length(limit) if raw.length() > limit else Vector2.ZERO
-	_shift = _shift.lerp(-excess, 1.0 - exp(-10.0 * delta))
-	eye = Vector3(raw.x + _shift.x, eye.y, raw.y + _shift.y)
-	var flat := Vector2(eye.x, eye.z).limit_length(limit + 0.02)
-	eye = Vector3(flat.x, eye.y, flat.y)
 	if not _cam_ready:
 		_cam_pos = eye
 		_cam_ready = true
 	_cam_pos = _cam_pos.lerp(eye, 1.0 - exp(-camera_smooth * delta))
-	_player.place_camera(_cam_pos)
+	_player.place_camera(_wall_clamp(_cam_pos))
+
+
+## Камера (в осях Player) не дальше стены: сфера от середины груди к глазам.
+func _wall_clamp(eye: Vector3) -> Vector3:
+	var chest := _player.to_local(skeleton.global_transform * skeleton.get_bone_global_pose(_bones["Chest"]).origin)
+	var motion := eye - chest
+	if motion.length_squared() < 1e-6:
+		return eye
+	var q := PhysicsShapeQueryParameters3D.new()
+	var sphere := SphereShape3D.new()
+	sphere.radius = camera_wall_radius
+	q.shape = sphere
+	q.transform = Transform3D(Basis(), _player.to_global(chest))
+	q.motion = _player.global_basis * motion
+	q.collision_mask = _player.collision_mask
+	q.exclude = [_player.get_rid()]
+	var hit := get_world_3d().direct_space_state.cast_motion(q)
+	if hit.is_empty() or hit[0] >= 1.0:
+		return eye
+	return chest + motion * hit[0]
 
 
 ## Шаг — кость стопы опустилась к земле (с гистерезисом), пока герой идёт или переступает.
