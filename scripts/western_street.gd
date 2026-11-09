@@ -284,35 +284,50 @@ func is_day() -> bool:
 
 
 func _make_materials() -> void:
+	# Фото-текстуры Poly Haven (textures/photo/, что куда — textures/README.md). Яркость и оттенок фото
+	# подогнаны цветом материала под прежние (под них настроен свет): _photo(имя, средний цвет).
+	# Фирменные рисунки — иродианская рустовка, плиты мостовой, гладкие плиты Антонии — процедурные,
+	# в них фото подмешано зерном (ProcTextures.with_grain).
 	var limestone := Color(0.84, 0.78, 0.64)
-	_m.ashlar = PsxMaterial.make(ProcTextures.ashlar(128, 4, limestone, 11))
-	_m.slab = PsxMaterial.make(ProcTextures.ashlar(128, 3, Color(0.8, 0.77, 0.68), 12, 0, false, 0.4, 0.9, 0.2, 0.025))
-	_m.paving = PsxMaterial.make(ProcTextures.ashlar(64, 2, Color(0.7, 0.66, 0.58), 13, 0, false, 0.25, 0.6, 0.45, 0.05))
-	# Главная дорога — крупные светлые плиты; боковые переулки — тёмная мелкая мостовая; водосток — тот же камень чуть темнее
-	var main_paving := ProcTextures.ashlar(64, 2, Color(0.84, 0.8, 0.7), 15, 0, false, 0.3, 0.7, 0.3, 0.04)
+	_m.ashlar = PsxMaterial.make(ProcTextures.with_grain(ProcTextures.ashlar(128, 4, limestone, 11), "sandstone_blocks_04", 0.7))
+	_m.slab = PsxMaterial.make(ProcTextures.with_grain(
+		ProcTextures.ashlar(128, 3, Color(0.8, 0.77, 0.68), 12, 0, false, 0.4, 0.9, 0.2, 0.025), "rock_face_03", 0.45))
+	_m.paving = PsxMaterial.make(ProcTextures.with_grain(
+		ProcTextures.ashlar(64, 2, Color(0.7, 0.66, 0.58), 13, 0, false, 0.25, 0.6, 0.45, 0.05), "rock_wall_03", 0.45))
+	# Главная дорога — крупные светлые плиты; боковые переулки — мелкая мостовая (фото); водосток — тот же камень чуть темнее
+	var main_paving := ProcTextures.with_grain(
+		ProcTextures.ashlar(64, 2, Color(0.84, 0.8, 0.7), 15, 0, false, 0.3, 0.7, 0.3, 0.04), "sandstone_blocks_04", 0.6)
 	_m.paving_main = PsxMaterial.make(main_paving)
-	_m.paving_dark = PsxMaterial.make(ProcTextures.ashlar(64, 4, Color(0.48, 0.45, 0.4), 16, 0, false, 0.25, 0.55, 0.5, 0.06))
+	_m.paving_dark = _photo("rock_wall_06", Color(0.5, 0.47, 0.42))
 	_m.gutter = PsxMaterial.make(main_paving, Color(0.84, 0.82, 0.78))
 	_m.gutter_edge = PsxMaterial.make(main_paving, Color(0.62, 0.6, 0.56))
-	_m.lintel = PsxMaterial.make(ProcTextures.ashlar(64, 2, Color(0.82, 0.78, 0.68), 14, 2, true, 0.4, 0.8, 0.35, 0.04))
-	_m.plaster_a = PsxMaterial.make(ProcTextures.plaster(64, Color(0.84, 0.8, 0.7), 21))
-	_m.plaster_b = PsxMaterial.make(ProcTextures.plaster(64, Color(0.82, 0.74, 0.64), 22))
-	_m.plaster_in = PsxMaterial.make(ProcTextures.plaster(64, Color(0.78, 0.74, 0.66), 23))
-	# Белая штукатурка богатых домов и охристая обмазка бедных
-	_m.white = PsxMaterial.make(ProcTextures.plaster(64, Color(0.93, 0.92, 0.88), 18))
-	_m.ochre = PsxMaterial.make(ProcTextures.plaster(64, Color(0.76, 0.58, 0.36), 19))
-	_m.rubble = PsxMaterial.make(ProcTextures.rubble(64, 22, Color(0.7, 0.64, 0.52), Color(0.82, 0.78, 0.7), 24))
-	_m.rubble_in = PsxMaterial.make(ProcTextures.rubble(64, 18, Color(0.6, 0.55, 0.46), Color(0.7, 0.66, 0.6), 25))
-	_m.earth = PsxMaterial.make(ProcTextures.mottled(64, Color(0.55, 0.45, 0.33), 0.05, 0.1, 26))
-	_m.floor = PsxMaterial.make(ProcTextures.mottled(64, Color(0.5, 0.43, 0.34), 0.04, 0.08, 27))
-	_m.roof = PsxMaterial.make(ProcTextures.mottled(64, Color(0.68, 0.64, 0.56), 0.04, 0.1, 28))
-	_m.ceiling = PsxMaterial.make(ProcTextures.wood(64, 6, Color(0.38, 0.27, 0.17), 29))
-	_m.wood = PsxMaterial.make(ProcTextures.wood(64, 4, Color(0.5, 0.36, 0.22), 31))
-	_m.door = PsxMaterial.make(ProcTextures.gate_door(64, Color(0.46, 0.32, 0.19), Color(0.36, 0.26, 0.17), 2, 32))
-	_m.cedar = PsxMaterial.make(ProcTextures.wood(64, 8, Color(0.42, 0.27, 0.16), 32))
-	_m.column = PsxMaterial.make(ProcTextures.mottled(64, Color(0.93, 0.91, 0.86), 0.03, 0.05, 41))
-	_m.gate = PsxMaterial.make(ProcTextures.gate_door(64, Color(0.42, 0.28, 0.16), Color(0.66, 0.47, 0.2), 3, 51))
+	_m.lintel = PsxMaterial.make(ProcTextures.with_grain(
+		ProcTextures.ashlar(64, 2, Color(0.82, 0.78, 0.68), 14, 2, true, 0.4, 0.8, 0.35, 0.04), "sandstone_blocks_04", 0.6))
+	# Дома разные (§3): белая штукатурка богатых, простая кремовая, облупленная, охристая обмазка, бут
+	_m.white = _photo("white_stucco_02", Color(0.92, 0.91, 0.87))
+	_m.plaster_a = _photo("rough_plaster_03", Color(0.84, 0.8, 0.7))
+	_m.plaster_b = _photo("white_rough_plaster", Color(0.82, 0.77, 0.67))
+	_m.plaster_in = _photo("rough_plaster_03", Color(0.76, 0.72, 0.64))
+	_m.ochre = _photo("clay_block_wall", Color(0.76, 0.58, 0.36))
+	_m.rubble = _photo("rock_wall_04", Color(0.68, 0.65, 0.58))
+	_m.rubble_in = _photo("rustic_stone_wall_02", Color(0.6, 0.55, 0.46))
+	# Земля дворов, утоптанный пол комнат, плоские крыши (известковая обмазка)
+	_m.earth = _photo("gravelly_sand", Color(0.55, 0.45, 0.33))
+	_m.floor = _photo("dirt_floor", Color(0.5, 0.43, 0.34))
+	_m.roof = _photo("rough_plaster_03", Color(0.68, 0.64, 0.56))
+	# Дерево: балки потолка и кедр стои — тёмные доски, леса и мостки — старые доски
+	_m.ceiling = _photo("dark_wooden_planks", Color(0.38, 0.27, 0.17))
+	_m.wood = _photo("old_wood_floor", Color(0.5, 0.36, 0.22))
+	_m.door = PsxMaterial.make(ProcTextures.photo_door("old_wood_floor", Color(0.46, 0.32, 0.19), Color(0.36, 0.26, 0.17), 2))
+	_m.cedar = _photo("dark_wooden_planks", Color(0.42, 0.27, 0.16))
+	_m.column = _photo("white_stucco_02", Color(0.93, 0.91, 0.86))
+	_m.gate = PsxMaterial.make(ProcTextures.photo_door("dark_wooden_planks", Color(0.42, 0.28, 0.16), Color(0.66, 0.47, 0.2), 3))
 	_m.water = PsxMaterial.make(null, Color(0.08, 0.12, 0.13))
+
+
+## Материал на фото-текстуре, средний цвет которой подогнан к target.
+func _photo(name: String, target: Color) -> ShaderMaterial:
+	return PsxMaterial.make(ProcTextures.photo(name), ProcTextures.photo_tint(name, target))
 
 
 ## ─── Мостовая площади и у ворот ──────────────────────────────────────────────

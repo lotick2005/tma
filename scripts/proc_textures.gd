@@ -253,3 +253,119 @@ static func rubble(size: int, stones: int, base: Color, mortar: Color, seed: int
 					c = c.darkened(0.12)
 			img.set_pixel(x, y, Color(c.r + n, c.g + n, c.b + n))
 	return ImageTexture.create_from_image(img)
+
+
+# ─── Фото-текстуры (Poly Haven, CC0; textures/photo/, что куда — textures/README.md) ──────────────
+
+const PHOTO_DIR := "res://textures/photo/"
+static var _photo_cache := {}
+
+
+## Фото-текстура 128×128 как есть (импорт без мипмапов; nearest и repeat задаёт psx-шейдер).
+static func photo(name: String) -> Texture2D:
+	if not _photo_cache.has(name):
+		_photo_cache[name] = load(PHOTO_DIR + name + ".png")
+	return _photo_cache[name]
+
+
+## Картинка фото в памяти (RGB8) или null, если текстуру не удалось прочитать обратно.
+static func photo_image(name: String) -> Image:
+	var tex := photo(name)
+	var img: Image = tex.get_image() if tex else null
+	if img == null or img.is_empty():
+		push_warning("Фото-текстура %s не читается — остаётся процедурная" % name)
+		return null
+	img.convert(Image.FORMAT_RGB8)
+	return img
+
+
+## Средний цвет картинки (уменьшение до 1×1 с усреднением — без цикла по пикселям).
+static func image_mean(img: Image) -> Color:
+	var m := img.duplicate() as Image
+	m.resize(1, 1, Image.INTERPOLATE_TRILINEAR)
+	return m.get_pixel(0, 0)
+
+
+static func photo_mean(name: String) -> Color:
+	var img := photo_image(name)
+	return image_mean(img) if img else Color(0.5, 0.5, 0.5)
+
+
+## Множитель цвета материала, чтобы средний цвет фото стал target (умножение в sRGB — то же, что в линейном).
+## Так яркость фото подгоняется под освещение уровня без перерисовки картинки.
+static func photo_tint(name: String, target: Color) -> Color:
+	var m := photo_mean(name)
+	return Color(target.r / maxf(m.r, 0.01), target.g / maxf(m.g, 0.01), target.b / maxf(m.b, 0.01))
+
+
+## Кусок фото size×size пикселей в родном разрешении (для плитки атласа предметов), перекрашенный так,
+## чтобы средний цвет стал target. contrast — 1 как есть, меньше — спокойнее. rotate — повернуть на 90°
+## (доски и волокна вдоль V, как у процедурных). Без цикла по пикселям там, где можно.
+static func photo_tile(name: String, size: int, target: Color, origin := Vector2i.ZERO, contrast := 1.0,
+		rotate := false) -> ImageTexture:
+	var src := photo_image(name)
+	if src == null:
+		return null
+	if rotate:
+		src.rotate_90(CLOCKWISE)
+	var img := src.get_region(Rect2i(origin, Vector2i(size, size)))
+	var m := image_mean(img)
+	for y in size:
+		for x in size:
+			var c := img.get_pixel(x, y)
+			c = Color(m.r + (c.r - m.r) * contrast, m.g + (c.g - m.g) * contrast, m.b + (c.b - m.b) * contrast)
+			img.set_pixel(x, y, Color(c.r * target.r / maxf(m.r, 0.01), c.g * target.g / maxf(m.g, 0.01),
+				c.b * target.b / maxf(m.b, 0.01)))
+	return ImageTexture.create_from_image(img)
+
+
+## Подмешать фото как зерно: процедурный рисунок (плиты, рустовка, полосы) остаётся, а внутри него —
+## пятна и поры настоящего камня или ткани. Картинка увеличивается до размера фото (nearest), каждый
+## пиксель умножается на яркость фото относительно её среднего; strength — сила зерна (0 — нет, 1 — полная).
+## Фото бесшовное, поэтому и результат стыкуется, если процедурная текстура бесшовная.
+## keep_size — не увеличивать картинку, а взять кусок фото её размера (плитки атласа 64×64).
+static func with_grain(tex: ImageTexture, name: String, strength: float, keep_size := false) -> ImageTexture:
+	var src := photo_image(name)
+	if src == null:
+		return tex
+	var size := src.get_width()
+	var img := tex.get_image()
+	img.convert(Image.FORMAT_RGB8)
+	if keep_size:
+		size = img.get_width()
+		src = src.get_region(Rect2i(0, 0, size, size))
+	elif img.get_width() != size:
+		img.resize(size, size, Image.INTERPOLATE_NEAREST)
+	var ml := maxf(image_mean(src).get_luminance(), 0.01)
+	for y in size:
+		for x in size:
+			var k := 1.0 + strength * (src.get_pixel(x, y).get_luminance() / ml - 1.0)
+			var c := img.get_pixel(x, y)
+			img.set_pixel(x, y, Color(c.r * k, c.g * k, c.b * k))
+	return ImageTexture.create_from_image(img)
+
+
+## Створка ворот и двери на фото-досках: доски вдоль V, поперёк — бронзовые или деревянные полосы с заклёпками.
+static func photo_door(name: String, target: Color, bronze: Color, bands: int = 3) -> ImageTexture:
+	var tile := photo_tile(name, 128, target, Vector2i.ZERO, 1.0, true)
+	if tile == null:
+		return gate_door(64, target, bronze, bands)
+	var base := tile.get_image()
+	_door_bands(base, bronze, bands)
+	return ImageTexture.create_from_image(base)
+
+
+static func _door_bands(img: Image, bronze: Color, bands: int) -> void:
+	var size := img.get_width()
+	var step := size / bands
+	var band_h := maxi(2, size / 16)
+	for b in bands:
+		var y0 := b * step + (step - band_h) / 2
+		for yy in band_h:
+			for x in size:
+				var c := bronze.lightened(0.12) if yy == 0 else (bronze.darkened(0.3) if yy == band_h - 1 else bronze)
+				img.set_pixel(x, y0 + yy, c)
+		for x in range(size / 12, size, size / 6):
+			for y in [y0 - 2, y0 + band_h + 1]:
+				if y >= 0 and y < size:
+					img.set_pixel(x, y, bronze.lightened(0.2))

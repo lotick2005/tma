@@ -405,9 +405,18 @@ func _quad_h(mat_key: String, layer: int, a: Vector3, n: Vector3) -> void:
 		fb.uv.append(Vector2(p.x, p.z) / tile)
 
 
+## Сколько метров поверхности на один повтор текстуры: камни, доски и плетение — в реальном размере.
 func _tile(mat_key: String) -> float:
 	match mat_key:
-		"plaster_a", "plaster_b", "plaster_in":
+		"plaster_a", "plaster_b", "plaster_in", "white":
+			return 2.5
+		"rubble":
+			return 3.0
+		"rubble_in", "ochre":
+			return 2.5
+		"roof":
+			return 3.0
+		"wood":
 			return 3.0
 		"gutter", "gutter_edge":
 			return 2.0
