@@ -24,7 +24,7 @@ script = ExtResource("4_body")
 script = ExtResource("2_lamp")
 
 [node name="Light" type="OmniLight3D" parent="Body/OilLamp"]
-transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0.048, -0.066)
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0.048, -0.06)
 light_color = Color(1, 0.62, 0.3, 1)
 light_energy = 0.6
 omni_range = 3.5

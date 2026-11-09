@@ -61,3 +61,25 @@ static func speed(anim_name: String) -> float:
 static func scale_for(anim_name: String, v: float) -> float:
 	var s := speed(anim_name)
 	return v / s if s > 0.0 else 1.0
+
+
+## Поза — один кадр анимации anim_name в момент time (с) как отдельная анимация-поза (по ключу на дорожку).
+## Нужна для стоек, которых нет в библиотеке: стойка героя — конец walk_stop, присед стоя — кадр crouch_walk.
+static func pose_from(anim_name: String, time: float) -> Animation:
+	var src := library().get_animation(anim_name)
+	var out := Animation.new()
+	out.length = 1.0 / 30.0
+	for i in src.get_track_count():
+		var type := src.track_get_type(i)
+		var t := out.add_track(type)
+		out.track_set_path(t, src.track_get_path(i))
+		match type:
+			Animation.TYPE_POSITION_3D:
+				out.position_track_insert_key(t, 0.0, src.position_track_interpolate(i, time))
+			Animation.TYPE_ROTATION_3D:
+				out.rotation_track_insert_key(t, 0.0, src.rotation_track_interpolate(i, time))
+			Animation.TYPE_SCALE_3D:
+				out.scale_track_insert_key(t, 0.0, src.scale_track_interpolate(i, time))
+			_:
+				out.remove_track(t)
+	return out

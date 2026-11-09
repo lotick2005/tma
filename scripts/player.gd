@@ -1,8 +1,11 @@
 class_name Player
 extends CharacterBody3D
-## Герой: вид от первого лица, ходьба, бег с выносливостью, присед, покачивание камеры.
-## Тело (модель hero, скелет Mixamo, мокап-анимации) — hero_body.gd, руки и светильник — hero_arms.gd
-## (F — достать / убрать).
+## Герой: вид от первого лица, ходьба, бег с выносливостью, присед.
+## Узел Player повёрнут туда, куда смотрит мышь (по нему считается движение WASD); тело — отдельно
+## (hero_body.gd: стоит, пока взгляд не ушёл далеко, на ходу доворачивается). Камера — в голове тела:
+## её ставит hero_body.gd (place_camera), отдельного покачивания нет — качает анимация шагов.
+## Руки и светильник — hero_arms.gd (F — достать / убрать).
+## Отладка (tma/debug/keys): клавиша 6 — камера со стороны, облёт мышью, колесо — ближе / дальше.
 ## Курсором управляет экран «Кликни, чтобы начать» (scripts/click_to_start.gd),
 ## здесь только обзор, пока курсор захвачен.
 
@@ -16,7 +19,7 @@ const VIEW_LAYER := 3
 
 ## Сменился режим движения: стоит / присел / идёт / бежит. Нужен для шума (этап 5).
 signal move_mode_changed(mode: MoveMode)
-## Нога встала на землю (в нижней точке покачивания) — для звука шагов (HeroAudio).
+## Нога встала на землю (по ступне анимации, hero_body.gd) — для звука шагов (HeroAudio).
 signal footstep(mode: MoveMode)
 
 @export_group("Скорость")
@@ -35,12 +38,10 @@ signal footstep(mode: MoveMode)
 @export var stamina_recover := 1.5
 
 @export_group("Рост и присед")
+## Высота коллизии стоя и в приседе, м. Глаза — из анимации (кость головы): стоя ≈1,64, в приседе ≈1,3.
+## В приседе проходит под потолком от 1,4 м — это и есть самый низкий проход (канал, уровень 6, CLAUDE.md §3).
 @export var stand_height := 1.8
-@export var crouch_height := 1.25
-@export var stand_eye_height := 1.62
-@export var crouch_eye_height := 1.1
-## Скорость, с которой камера опускается и поднимается.
-@export var crouch_camera_speed := 8.0
+@export var crouch_height := 1.4
 ## true — C переключает присед, false — надо держать.
 @export var crouch_toggle := true
 ## Радиус коллизии: покрывает тело вместе с коленями в приседе.
@@ -53,14 +54,6 @@ signal footstep(mode: MoveMode)
 @export var mouse_sensitivity := 0.0022
 @export_range(10.0, 89.0) var pitch_limit_deg := 85.0
 
-@export_group("Покачивание")
-## Амплитуда покачивания при ходьбе, м.
-@export var bob_amount := 0.03
-## Длина шага, м: за шаг камера проседает один раз.
-@export var bob_step_length := 0.8
-@export var bob_run_scale := 1.7
-@export var bob_crouch_scale := 0.6
-
 var move_mode: MoveMode = MoveMode.STAND
 var stamina := 0.0
 ## Управление отобрано (катсцена): нет обзора мышью, движения, приседа и светильника по клавишам.
@@ -69,7 +62,12 @@ var locked := false
 
 var _crouched := false
 var _exhausted := false
-var _bob_phase := 0.0
+var _debug_keys := false
+var _orbit: Camera3D
+var _orbit_angles := Vector2(PI, -0.25)
+var _orbit_dist := 2.2
+## Камера со стороны смотрит на эту точку (в осях героя, от середины тела) — для крупных планов.
+var orbit_focus := Vector3.ZERO
 var _gravity: float = ProjectSettings.get_setting("physics/3d/default_gravity")
 
 @onready var _collision: CollisionShape3D = $CollisionShape3D
@@ -86,15 +84,32 @@ func _ready() -> void:
 	_collision.shape = CapsuleShape3D.new()
 	_collision.shape.radius = collision_radius
 	_set_body_height(stand_height)
-	_head.position.y = stand_eye_height
+	_head.position.y = 1.6
 	_arms.set_lamp_out(GameState.lamp_out, true)
 	_arms.lamp_changed.connect(func(out: bool) -> void: GameState.lamp_out = out)
+	_body.foot_down.connect(func() -> void: footstep.emit(move_mode))
+	_debug_keys = ProjectSettings.get_setting("tma/debug/keys", false)
 
 
 func _unhandled_input(event: InputEvent) -> void:
+	if _debug_keys and event.is_action_pressed("debug_6"):
+		set_orbit(_orbit == null or not _orbit.current)
+		return
+	if _orbit and _orbit.current:
+		if event is InputEventMouseMotion and Input.mouse_mode == Input.MOUSE_MODE_CAPTURED:
+			var o: Vector2 = event.screen_relative * mouse_sensitivity
+			_orbit_angles = Vector2(_orbit_angles.x - o.x, clampf(_orbit_angles.y - o.y, -1.4, 1.4))
+			return
+		if event is InputEventMouseButton and event.pressed:
+			if event.button_index == MOUSE_BUTTON_WHEEL_UP:
+				_orbit_dist = maxf(0.6, _orbit_dist - 0.2)
+			elif event.button_index == MOUSE_BUTTON_WHEEL_DOWN:
+				_orbit_dist = minf(6.0, _orbit_dist + 0.2)
 	if locked:
 		return
 	if event is InputEventMouseMotion and Input.mouse_mode == Input.MOUSE_MODE_CAPTURED:
+		if _orbit and _orbit.current:
+			return
 		# screen_relative — в пикселях экрана, не зависит от растяжения 320×240
 		var d: Vector2 = event.screen_relative * mouse_sensitivity
 		rotate_y(-d.x)
@@ -149,13 +164,50 @@ func _physics_process(delta: float) -> void:
 		move_mode = mode
 		move_mode_changed.emit(move_mode)
 
-	var eye := crouch_eye_height if _crouched else stand_eye_height
-	_head.position.y = lerpf(_head.position.y, eye, 1.0 - exp(-crouch_camera_speed * delta))
-	_update_bob(delta, moving)
-	var speed_ratio := horizontal.length() / walk_speed if moving else 0.0
-	_body.update_pose(_head.position.y, _head.rotation.x, _bob_phase, speed_ratio)
-	_body.set_motion(transform.basis.inverse() * Vector3(velocity.x, 0.0, velocity.z) if moving else Vector3.ZERO,
-		_crouched, walk_speed, run_speed)
+	_body.set_motion(Vector3(velocity.x, 0.0, velocity.z) if moving else Vector3.ZERO, _crouched, walk_speed, run_speed)
+
+
+func _process(_delta: float) -> void:
+	if _orbit and _orbit.current:
+		var center := global_position + Vector3.UP * (0.8 if _crouched else 1.1) + global_basis * orbit_focus
+		var dir := Basis.from_euler(Vector3(_orbit_angles.y, _orbit_angles.x, 0.0)) * Vector3.BACK
+		_orbit.global_position = center + dir * _orbit_dist
+		_orbit.look_at(center)
+
+
+## Камера со стороны (клавиша 6): облёт героя мышью, WASD по-прежнему двигает героя относительно его взгляда.
+func set_orbit(on: bool) -> void:
+	if on and _orbit == null:
+		_orbit = Camera3D.new()
+		_orbit.name = "OrbitCamera"
+		_orbit.top_level = true
+		_orbit.near = 0.05
+		add_child(_orbit)
+	if _orbit == null:
+		return
+	_orbit.fov = _camera.fov
+	_orbit.far = _camera.far
+	if on:
+		_orbit_angles.x = rotation.y + PI
+		_orbit.make_current()
+	else:
+		_camera.make_current()
+	_body.set_head_visible(on)
+
+
+## Наклон взгляда, рад (вниз — минус).
+func get_pitch() -> float:
+	return _head.rotation.x
+
+
+## Базис взгляда в мире (как у камеры в глазах).
+func eye_basis() -> Basis:
+	return _head.global_basis
+
+
+## Камеру ставит тело (hero_body.gd): глаза — на кости головы. pos — в осях Player.
+func place_camera(pos: Vector3) -> void:
+	_head.position = pos
 
 
 # ─── Для катсцен (scripts/cutscene_player.gd) ────────────────────────────────
@@ -198,31 +250,7 @@ func set_lamp(out: bool, instant := false) -> void:
 
 
 func set_head_visible(on: bool) -> void:
-	_body.set_head_visible(on)
-
-
-func _update_bob(delta: float, moving: bool) -> void:
-	var offset := Vector3.ZERO
-	if moving and is_on_floor():
-		var dist := Vector2(velocity.x, velocity.z).length() * delta
-		var was_half := _step_half(_bob_phase)
-		_bob_phase = fmod(_bob_phase + dist / bob_step_length * PI, TAU)
-		# Нижняя точка покачивания (фаза π/2 и 3π/2) — нога встала
-		if _step_half(_bob_phase) != was_half:
-			footstep.emit(move_mode)
-		var amount := bob_amount
-		if move_mode == MoveMode.RUN:
-			amount *= bob_run_scale
-		elif move_mode == MoveMode.CROUCH:
-			amount *= bob_crouch_scale
-		# Вниз на каждом шаге, вбок — раз в два шага
-		offset = Vector3(sin(_bob_phase) * amount * 0.5, (cos(_bob_phase * 2.0) - 1.0) * 0.5 * amount, 0.0)
-	_camera.position = _camera.position.lerp(offset, 1.0 - exp(-12.0 * delta))
-
-
-## Половина цикла шага: 0 — между π/2 и 3π/2, 1 — остальное. Смена половины — шаг.
-func _step_half(phase: float) -> int:
-	return 0 if phase >= PI * 0.5 and phase < PI * 1.5 else 1
+	_body.set_head_visible(on or (_orbit != null and _orbit.current))
 
 
 func _set_crouched(value: bool) -> void:
@@ -276,7 +304,7 @@ func _try_step(from: Vector3, motion: Vector3) -> void:
 	if rise <= 0.01:
 		return
 	global_position = xf.origin + res.get_travel()
-	_head.position.y -= rise
+	_body.add_step(rise)
 
 
 ## Есть ли место над головой, чтобы встать.
