@@ -26,6 +26,8 @@
 
 ## Что стоит сейчас (уровень 1)
 
+**Сведение (ноябрь):** все 24 фото пропущены через `tools/textures/grade_photos.py` — почти без своего цвета, ровный и низкий контраст (штукатурка самая спокойная, бут и дерево — заметнее), мелкий шум сглажен, крупные пятна приглушены (меньше виден повтор), 16 цветов без дизеринга. Так разные фото читаются как один известняковый город, а не лоскутное одеяло. Исходники — в коммите `cf78115`.
+
 Яркость и оттенок каждого фото подогнаны цветом материала к прежнему цвету поверхности (`ProcTextures.photo_tint`), саму картинку не перерисовываем. «м» — сколько метров стены или пола на один повтор текстуры (`QuarterBuilder._tile`).
 
 | Материал (`_m.*` в `western_street.gd`) | Текстура | м |
@@ -33,8 +35,8 @@
 | `white` — белые богатые дома, колонны стои (`column`) | `white_stucco_02` | 2,5 |
 | `plaster_a` — простая штукатурка; `plaster_in` — стены комнат; `roof` — крыши | `rough_plaster_03` | 2,5 / 2,5 / 3 |
 | `plaster_b` — облупленная штукатурка | `white_rough_plaster` | 2,5 |
-| `ochre` — охряная обмазка | `clay_block_wall` | 2,5 |
-| `rubble` — бут бедных домов и цоколей | `rock_wall_04` | 3 |
+| `ochre` — охряная обмазка (приглушённая, не оранжевая) | `clay_block_wall` | 2,5 |
+| `rubble` — бут бедных домов и цоколей (рваный известняк) | `yellow_stone_wall` | 3 |
 | `rubble_in` — подвалы | `rustic_stone_wall_02` | 2,5 |
 | `paving_dark` — боковые переулки | `rock_wall_06` | 2 |
 | `earth` — дворы | `gravelly_sand` | 2 |
@@ -48,7 +50,7 @@
 
 Атлас предметов (`PropLibrary._atlas`, 64×64 на плитку — кусок фото в родном разрешении, ≈0,5–1,5 м): WOOD — `old_wood_floor`, WOOD_DARK — `dark_wooden_planks` (доски повёрнуты вдоль V), LINEN — `jogging_melange`, SHROUD — полосы + зерно `jogging_melange`, CLOTH_RED и CLOTH_OCHRE — `hessian_380` с каймой, CLOTH_BLUE — полосы + зерно `hessian_380`, STRAW и SACK — `hessian_230`, STONE — `sandstone_blocks_04`. Остальные плитки (глина, кровь, металл, зелень…) — процедурные.
 
-Пока не использованы: `dry_ground_rocks`, `medieval_blocks_06`, `rock_wall_03` (только зерно), `rocky_terrain_03`, `terrazzo_tiles`, `white_sandstone_bricks_03`, `worn_brick_wall`, `yellow_stone_wall`, `hessian` в ткани навесов — по месту на следующих уровнях.
+Пока не использованы: `dry_ground_rocks`, `medieval_blocks_06`, `rock_wall_03` (только зерно), `rocky_terrain_03`, `terrazzo_tiles`, `white_sandstone_bricks_03`, `worn_brick_wall`, `rock_wall_04` (серый европейский булыжник — был бутом), `hessian` в ткани навесов — по месту на следующих уровнях.
 
 ## Авторы (по желанию, CC0)
 
