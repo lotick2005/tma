@@ -51,6 +51,22 @@
 | `saint_drone_01.ogg` | [singers dominance](https://freesound.org/s/876338/) | delzana | ⏳ уточняется | Бесшовная петля 3,8 с из ровной низкой ноты, 22 кГц, моно |
 | `crowd_panic.ogg` | [man screaming](https://freesound.org/s/325548/); [man in excruciating pain](https://freesound.org/s/876075/); [wilhelm scream alternative 1](https://freesound.org/s/813303/); [wilhelm scream alternative 5](https://freesound.org/s/813307/); [wake up scared](https://freesound.org/s/588666/); [man struggle](https://freesound.org/s/682137/); [gasp01](https://freesound.org/s/218410/) | archeos, sebasteks, qubodup, thepig01, henkonen, kokopetiyot | ⏳ уточняется | Сборная петля 40 с: 70 криков из этих записей на разной высоте, громкости и удалении + ускоренный гомон из `market_crowd.ogg` (Vital_Sounds, CC BY 3.0) |
 | `crowd_stampede.ogg` | [01969 walking barefoot stone](https://freesound.org/s/101755/) | robinhood76 | ⏳ уточняется | Сборная петля 30 с: ~780 шагов (эти босые + `steps_stone_run_*`, HenKonen, CC0) на разной высоте + синтезированный низкий гул |
+| `cloth_rustle_07…14.ogg` | [Clothing Rustles](https://freesound.org/s/128233/); [Clothing rustle cotton](https://freesound.org/s/427866/) | trettfilms, leonelmail | ⏳ уточняется | Нарезано на 8 шорохов до 1 с, срез ниже 120 Гц, моно |
+| `shroud_drop_01…02.ogg` | [Taking off a robe](https://freesound.org/s/395083/); [Putting on a robe](https://freesound.org/s/395081/) | sgcardinal | ⏳ уточняется | Тихие записи: шум вычтен по спектру, срез ниже 150 Гц, вырезано 4 с |
+| `hammer_nail_07…09.ogg`, `hammer_nail_10…15.ogg` | [outside hammer](https://freesound.org/s/342542/); [Hammering a nail into a wooden block](https://freesound.org/s/490752/) | sgrowe, jordishaw | ⏳ уточняется | 07–09 — далёкие удары на улице (для «из-за скалы»); 10–15 — отдельные удары, опущены на 3 полутона |
+| `choke_05…08.ogg` | [Choking](https://freesound.org/s/853561/) | smit5832 | ⏳ уточняется | Нарезано на 4 хрипа, срез ниже 90 Гц, моно |
+| `breath_struggle_01.ogg` | [human stuggled breath male](https://freesound.org/s/653104/) | roisingleeson | ⏳ уточняется | Тихая запись: шум вычтен, 8 с напряжённого дыхания (героя держат) |
+| `grab_01…02.ogg` | [Distort mic grab 6](https://freesound.org/s/539947/) | saintsamael | ⏳ уточняется | Опущено на 2 полутона, срез выше 3,5 кГц; во втором — плюс шорох ткани |
+| `saint_growl_01…08.ogg` | [hraurhing into my hand](https://freesound.org/s/786537/) | saltbearer | ⏳ уточняется | Нарезано на 8 хрипов-рыков до 3,6 с, полоса 70 Гц–5 кГц, моно |
+| `saint_sniff_01…02.ogg` | [Sniffing snuffle nose sound](https://freesound.org/s/445975/) | breviceps | ⏳ уточняется | Опущено на 2 и 4 полутона (ниже, грубее) |
+| `saint_chant_02.ogg` | [BR_095 Himalaya BuddhistMonk](https://freesound.org/s/440243/) | kevp888 | ⏳ уточняется | Срезано всё выше 900 Гц (в записи свист и тон), бесшовная петля 56 с, 22 кГц, моно |
+| `ritual_far_01.ogg` | [two male voices chanting … wood block and a bell](https://freesound.org/s/686628/) | calebjay | ⏳ уточняется | Только низы (60–650 Гц: колокольчик срезан), длинное эхо, петля 30 с, 22 кГц — далёкий обряд за стеной |
+| `wake_groan_01…08.ogg` | [Man Waking Up From Sleep](https://freesound.org/s/500801/); [yawn 01](https://freesound.org/s/503483/); [yawn 02](https://freesound.org/s/503490/) | khenshom, larakaa | ⏳ уточняется | 01–06 — кряхтение и выдохи при пробуждении; 07–08 — зевки на 3 полутона ниже (тяжёлый выдох) |
+| `thud_far_01…02.ogg` | [80s power snare](https://freesound.org/s/422679/) | yellowtree | ⏳ уточняется | Опущено на 14 и 18 полутонов, срез выше 1,2 / 0,9 кГц, эхо — глухой удар вдалеке |
+| `ring_ears_01.ogg`, `toll_low_01.ogg` | [church bell](https://freesound.org/s/841352/) | miriamsperb | ⏳ уточняется | Звон в ушах: «заморозка» спектра колокола, 7 верхних обертонов (2,9–4,2 кГц), 7 с. Низкий гул: удар на две октавы ниже, срез выше 700 Гц |
+
+
+Из второго архива не взята одна запись: [irish heart](https://freesound.org/s/267344/) (contramundum) — по спектру внутри голос поверх музыкального тона, сердцебиения нет. Сердце пока заглушка.
 
 ⏳ **Лицензии этой таблицы сверены не все**: страницы freesound в день обработки не открывались. У freesound бывают только CC0, CC BY, CC BY-NC и (у старых записей) Sampling+ — для бесплатной игры с указанием авторов подходят все четыре. Перед платным релизом сверить каждую строку и заменить записи с NC.
 
