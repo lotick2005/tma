@@ -154,6 +154,10 @@ const KINDS := {
 	"oven": {"collide": Vector3(0.8, 0.6, 0.8)},
 	"quern": {"collide": Vector3.ZERO},
 	"cistern": {"collide": Vector3(1.1, 0.5, 1.1)},
+	# Предметы с физикой (этап 5, scripts/phys_prop.gd): один черепок, камень для броска, камень в руке святого
+	"shard_piece": {"collide": Vector3.ZERO},
+	"stone_throw": {"collide": Vector3.ZERO},
+	"stone_held": {"collide": Vector3.ZERO},
 }
 
 static var _material: ShaderMaterial
@@ -1957,4 +1961,33 @@ static func _make_herb_pot() -> Mesh:
 	var b := PB.new()
 	b.lathe([Vector2(0, 0), Vector2(0.12, 0), Vector2(0.16, 0.2), Vector2(0.18, 0.24), Vector2(0.15, 0.24), Vector2(0, 0.2)], 7, Tile.CLAY)
 	_lump(b, Vector3(0, 0.2, 0), 0.17, 0.17, 0.22, Tile.LEAF, 125, 6)
+	return b.commit()
+
+
+# ─── Предметы с физикой (этап 5) ────────────────────────────────────────────
+
+## Один черепок: выгнутый кусок стенки кувшина (~12 см), с двух сторон. Точка — середина.
+static func _make_shard_piece() -> Mesh:
+	var b := PB.new()
+	var bend := 0.018
+	var pts := [Vector3(-0.065, 0.0, -0.04), Vector3(0.0, bend, -0.055), Vector3(0.06, 0.0, -0.035),
+		Vector3(0.07, 0.0, 0.03), Vector3(0.0, bend, 0.05), Vector3(-0.055, 0.0, 0.04)]
+	b.quad(pts[0], pts[1], pts[4], pts[5], Tile.CLAY, true)
+	b.quad(pts[1], pts[2], pts[3], pts[4], Tile.CLAY, true)
+	return b.commit()
+
+
+## Камень с кулак — чтобы кинуть. Точка — середина.
+static func _make_stone_throw() -> Mesh:
+	var b := PB.new()
+	_lump(b, Vector3(0, -0.04, 0), 0.07, 0.06, 0.08, Tile.STONE, 161, 6)
+	_lump(b, Vector3(0, 0.0, 0), 0.06, 0.055, -0.04, Tile.STONE, 162, 6)
+	return b.commit()
+
+
+## Окровавленный камень в руке первого святого. Точка — середина.
+static func _make_stone_held() -> Mesh:
+	var b := PB.new()
+	_lump(b, Vector3(0, -0.05, 0), 0.09, 0.075, 0.1, Tile.STONE, 163, 6)
+	_lump(b, Vector3(0.01, -0.01, 0), 0.07, 0.06, 0.07, Tile.BLOOD_DARK, 164, 5)
 	return b.commit()

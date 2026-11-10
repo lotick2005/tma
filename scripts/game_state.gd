@@ -16,3 +16,9 @@ var has_key: bool = false
 var lamp_out: bool = true
 ## Вступление (уровень 1: день на площади, вестник, тьма) пройдено — уровень сразу начинается во тьме.
 var intro_done: bool = false
+## Где герой очнётся, если его поймают (чекпойнт, этап 5): точка ног и взгляд. Пишет триггер-зона чекпойнта.
+var checkpoint_position: Vector3 = Vector3.ZERO
+var checkpoint_yaw: float = 0.0
+var has_checkpoint: bool = false
+## Сколько раз герой «очнулся» (поймали, сжёг ангел) — смерть в игре не смерть (CLAUDE.md §1).
+var wakes: int = 0

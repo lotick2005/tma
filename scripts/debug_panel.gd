@@ -184,6 +184,11 @@ func _build() -> void:
 	zones_btn.button_pressed = AudioManager.debug_visible
 	zones_btn.toggled.connect(func(on: bool) -> void: AudioManager.set_debug_visible(on))
 	snd.add_child(zones_btn)
+	var noise_btn := CheckButton.new()
+	noise_btn.text = "Шум и святые (5): круги шума, состояния над головами"
+	noise_btn.button_pressed = NoiseSystem.debug_visible
+	noise_btn.toggled.connect(func(on: bool) -> void: NoiseSystem.set_debug_visible(on))
+	snd.add_child(noise_btn)
 	var legend := Label.new()
 	legend.text = "Зоны: синий — комната, лиловый — подвал, жёлтый — переулок, зелёный — площадка.\nШарик — источник: зелёный слышно напрямую, красный — за стеной."
 	snd.add_child(legend)
@@ -229,6 +234,13 @@ func _sound_params() -> Array:
 	for bus in AudioManager.BUSES:
 		params.append(["bus_" + bus.to_lower(), bus, -40.0, 6.0, 0.5, AudioManager.get_bus_volume(bus),
 			func(v: float) -> void: AudioManager.set_bus_volume(bus, v)])
+	# Святые (этап 5): сколько раз в секунду обновляется их поза — 8–12 рвано, как кукла, 30 — плавно
+	var saints := get_tree().get_nodes_in_group("saints")
+	if not saints.is_empty():
+		params.append(["saint_fps", "Святые: поза/с", 4.0, 30.0, 1.0, (saints[0] as Saint).anim_fps,
+			func(v: float) -> void:
+				for sn in get_tree().get_nodes_in_group("saints"):
+					(sn as Saint).set_anim_fps(v)])
 	return params
 
 

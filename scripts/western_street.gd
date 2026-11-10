@@ -15,6 +15,8 @@ const THIN_CELL := 4.0
 ## Дальность «местной» геометрии (квартал, предметы): во тьме дальше тумана рисовать незачем.
 const DETAIL_RANGE_DARK := 36.0
 const DETAIL_RANGE_DAY := 70.0
+const SAINT_SCENE := preload("res://scenes/actors/saint.tscn")
+const FIRST_SAINT_CUTSCENE := "res://data/cutscenes/first_saint.gd"
 
 ## Пресеты освещения: «тьма» — вся игра, «день» — вступление (этап 4). Переключатель — в панели (0).
 @export var darkness: LightingPreset
@@ -39,6 +41,14 @@ var _day_sounds: Array[SoundEmitter] = []
 var _dark_sounds: Array[SoundEmitter] = []
 ## Герой в доме с подвалом, куда сложили мёртвых (звучит слой dark_ambience).
 var _in_cellar := false
+## Стелс (этап 5): предметы с физикой, святые, первый святой и его катсцена.
+var _phys: PhysProps
+var _saints: Array[Saint] = []
+var _first_saint: Saint
+var _first_scene := false
+var _stealth := false
+## Сколько секунд пекся навмеш (для отчёта / отладки).
+var nav_bake_ms := 0
 
 @onready var _player: Player = $Player
 @onready var _geometry: Node3D = $Geometry
@@ -81,11 +91,13 @@ func _ready() -> void:
 	_build_lights()
 	_b.commit()
 	_glows.commit(_geometry)
+	_build_navigation()
 	_place_player()
 	_setup_audio()
 	# Вступление — днём; если оно уже пройдено, уровень сразу во тьме
 	_is_day = not GameState.intro_done
 	_apply_lighting()
+	Awaken.respawn_handler = _respawn
 	if GameState.intro_done:
 		show_aftermath()
 	else:
@@ -195,6 +207,8 @@ func _build_dead_cellar() -> void:
 func _process(_delta: float) -> void:
 	if _quarter == null or _player == null:
 		return
+	if _stealth:
+		_check_first_saint()
 	var z: Array = D.DEAD_CELLAR.zone
 	var c := floori(_player.global_position.x - _quarter.x0)
 	var r := floori(_player.global_position.z - _quarter.z0)
@@ -211,6 +225,183 @@ func _process(_delta: float) -> void:
 func show_aftermath() -> void:
 	_aftermath.visible = true
 	_after_b.body.process_mode = Node.PROCESS_MODE_INHERIT
+	_start_stealth()
+
+
+# ─── Стелс (этап 5) ──────────────────────────────────────────────────────────
+
+## Навмеш для святых: печётся при запуске из коллизий квартала (стены, предметы с коллизией, ступени).
+## Только в пределах карты квартала (с площадью у ворот Антонии); крыши выше max_y не входят.
+func _build_navigation() -> void:
+	var t0 := Time.get_ticks_msec()
+	var nm := NavigationMesh.new()
+	nm.agent_radius = 0.25
+	nm.agent_height = 1.6
+	nm.agent_max_climb = 0.4
+	nm.agent_max_slope = 40.0
+	nm.cell_size = 0.25
+	nm.cell_height = 0.1
+	nm.geometry_parsed_geometry_type = NavigationMesh.PARSED_GEOMETRY_STATIC_COLLIDERS
+	nm.geometry_collision_mask = 1
+	var lo := INF
+	var hi := -INF
+	for g in _quarter.ground:
+		lo = minf(lo, g)
+		hi = maxf(hi, g)
+	nm.filter_baking_aabb = AABB(Vector3(_quarter.x0 - 1.0, lo - 3.0, _quarter.z0 - 1.0),
+		Vector3(_quarter.w + 2.0, hi - lo + 5.0, _quarter.h + 2.0))
+	var src := NavigationMeshSourceGeometryData3D.new()
+	NavigationServer3D.parse_source_geometry_data(nm, src, _geometry)
+	NavigationServer3D.bake_from_source_geometry_data(nm, src)
+	NavigationServer3D.map_set_cell_height(get_world_3d().navigation_map, nm.cell_height)
+	var region := NavigationRegion3D.new()
+	region.name = "Navigation"
+	region.navigation_mesh = nm
+	add_child(region)
+	nav_bake_ms = Time.get_ticks_msec() - t0
+	print("Навмеш: %d мс, %d вершин, %d многоугольников" % [nav_bake_ms, nm.get_vertices().size(), nm.get_polygon_count()])
+
+
+## После тьмы: предметы с физикой, святые, чекпойнты (один раз).
+func _start_stealth() -> void:
+	if _stealth:
+		return
+	_stealth = true
+	_phys = PhysProps.new()
+	_phys.name = "PhysProps"
+	add_child(_phys)
+	for e in D.PHYS_PROPS:
+		var off := Vector3(e[4] if e.size() > 4 else 0.0, 0.0, e[5] if e.size() > 5 else 0.0)
+		_phys.spawn(e[0], cell_point(e[1], e[2]) + off, deg_to_rad(e[3]))
+	if _player.hands():
+		_player.hands().props = _phys
+	for e in D.SAINTS:
+		var pts := []
+		for c: Vector2i in e[5]:
+			pts.append(cell_point(c.x, c.y))
+		var st := Saint.State.WANDER if e[4] == "wander" else Saint.State.PRAY
+		var off := Vector3(e[6] if e.size() > 6 else 0.0, 0.0, e[7] if e.size() > 7 else 0.0)
+		var sn := _spawn_saint(e[0], cell_point(e[1], e[2]) + off, deg_to_rad(e[3]), pts, st)
+		if e[4] == "kneel":
+			sn.pray_anim = "pray_kneel"
+	_place_first_saint()
+	for e in D.CHECKPOINTS:
+		var area := Area3D.new()
+		area.name = "Checkpoint_" + e[0]
+		area.collision_mask = 1
+		var cs := CollisionShape3D.new()
+		var sphere := SphereShape3D.new()
+		sphere.radius = e[4]
+		cs.shape = sphere
+		area.add_child(cs)
+		add_child(area)
+		area.global_position = cell_point(e[1], e[2]) + Vector3.UP
+		var at := cell_point(e[1], e[2])
+		var yaw := deg_to_rad(e[3])
+		area.body_entered.connect(func(b: Node3D) -> void:
+			if b is Player:
+				_set_checkpoint(e[0], at, yaw))
+	if not GameState.has_checkpoint:
+		var c0: Array = D.CHECKPOINTS[0]
+		_set_checkpoint(c0[0], cell_point(c0[1], c0[2]), deg_to_rad(c0[3]))
+
+
+func _spawn_saint(variant: int, at: Vector3, yaw: float, points: Array, first_state: Saint.State) -> Saint:
+	var v: Array = D.SAINT_VARIANTS[variant]
+	var sn: Saint = SAINT_SCENE.instantiate()
+	sn.model = v[0]
+	sn.height_scale = v[1]
+	sn.blood = v[2]
+	sn.chant = v[3]
+	sn.name = "Saint%d" % _saints.size()
+	add_child(sn)
+	sn.setup(at, yaw, points, first_state)
+	sn.caught_player.connect(_on_caught)
+	_saints.append(sn)
+	return sn
+
+
+## Первый святой: на коленях над телом в переулке, бьёт камнем; после катсцены — бродит (FIRST_SAINT.patrol).
+func _place_first_saint() -> void:
+	var fs: Dictionary = D.FIRST_SAINT
+	var pts := []
+	for c: Vector2i in fs.patrol:
+		pts.append(cell_point(c.x, c.y))
+	var at := cell_point(fs.cell.x, fs.cell.y) + Vector3(fs.offset.x, 0.0, fs.offset.y)
+	if _first_saint == null:
+		_first_saint = _spawn_saint(fs.variant, at, deg_to_rad(fs.yaw), pts, Saint.State.PRAY)
+	if _first_scene:
+		# Катсцена уже была: очнулся — святой бродит, начиная с переулка
+		var l: Vector2i = fs.leaves_to[0]
+		_first_saint.setup(cell_point(l.x, l.y), deg_to_rad(90.0), pts, Saint.State.WANDER)
+	else:
+		_first_saint.setup(at, deg_to_rad(fs.yaw), pts, Saint.State.PRAY)
+		_first_saint.start_strikes()
+
+
+func _set_checkpoint(id: String, at: Vector3, yaw: float) -> void:
+	if GameState.current_checkpoint == id and GameState.has_checkpoint:
+		return
+	GameState.current_checkpoint = id
+	GameState.checkpoint_position = at
+	GameState.checkpoint_yaw = yaw
+	GameState.has_checkpoint = true
+
+
+func _on_caught(saint: Saint) -> void:
+	for sn in _saints:
+		if sn != saint and sn.state == Saint.State.CHASE:
+			sn.reset()
+	Awaken.caught_by_saint(saint, _player)
+
+
+## В черноте после «поймали»: герой — к последнему чекпойнту, святые — по местам.
+func _respawn() -> void:
+	_player.teleport(GameState.checkpoint_position + Vector3.UP * 0.05, GameState.checkpoint_yaw)
+	for sn in _saints:
+		if sn != _first_saint:
+			sn.reset()
+	_place_first_saint()
+
+
+## Первый святой: подошёл к переулку (ближе trigger_radius и святой виден) — катсцена.
+func _check_first_saint() -> void:
+	if _first_scene or _first_saint == null or Cutscenes.playing or Awaken.busy or _player.locked:
+		return
+	var fs: Dictionary = D.FIRST_SAINT
+	var d := _player.global_position.distance_to(_first_saint.global_position)
+	if d > float(fs.trigger_radius):
+		return
+	var q := PhysicsRayQueryParameters3D.create(_player.eye_camera().global_position, _first_saint.head_point(), 1)
+	if not get_world_3d().direct_space_state.intersect_ray(q).is_empty():
+		return
+	_first_scene = true
+	_play_first_saint()
+
+
+func _play_first_saint() -> void:
+	var sn := _first_saint
+	await Cutscenes.play_file(FIRST_SAINT_CUTSCENE, {"actors": {"saint": sn},
+		"points": {"stone": func() -> Vector3: return sn.stone_point(),
+			"victim": cell_point(D.FIRST_SAINT.victim.x, D.FIRST_SAINT.victim.y) + Vector3.UP * 0.3},
+		"target": self, "level": self})
+	if sn.state == Saint.State.SCENE:
+		first_saint_leave()
+
+
+## Шаг катсцены: святой встаёт и уходит вглубь переулка.
+func first_saint_leave() -> void:
+	if _first_saint and _first_saint.state == Saint.State.SCENE:
+		_first_saint.stand_and_leave()
+
+
+## Для отладки и тестов.
+func saints() -> Array[Saint]:
+	return _saints
+
+
+func phys_props() -> PhysProps:
+	return _phys
 
 
 ## Точка карты (x, y) на мостовой площади A.

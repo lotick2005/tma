@@ -5,6 +5,7 @@
 [ext_resource type="Script" path="res://scripts/hero_arms.gd" id="3_arms"]
 [ext_resource type="Script" path="res://scripts/hero_body.gd" id="4_body"]
 [ext_resource type="Script" path="res://scripts/hero_audio.gd" id="5_audio"]
+[ext_resource type="Script" path="res://scripts/hero_hands.gd" id="6_hands"]
 
 [sub_resource type="CapsuleShape3D" id="CapsuleShape3D_body"]
 radius = 0.35
@@ -44,3 +45,6 @@ script = ExtResource("3_arms")
 
 [node name="Audio" type="Node" parent="."]
 script = ExtResource("5_audio")
+
+[node name="Hands" type="Node" parent="."]
+script = ExtResource("6_hands")
