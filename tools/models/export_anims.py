@@ -15,7 +15,7 @@ entries = json.load(open(LIST))
 only = os.environ.get('ONLY')
 manifest = []
 
-for d, f, name, mode, note in entries:
+for d, f, name, mode, note, *opts in entries:
     if only and name not in only.split(','):
         continue
     bpy.ops.wm.read_factory_settings(use_empty=True)
@@ -56,6 +56,15 @@ for d, f, name, mode, note in entries:
     seam = float(np.abs(pose_vec(f0) - pose_vec(f1)).max())
     p = after
     info = dict(name=name, file=f'{d}/{f}', mode=mode, note=note)
+    # 'ground' — запись сделана на возвышении (уступ, ступень): опускаем так, чтобы в первом кадре стопы стояли на земле
+    drop = 0.0
+    if 'ground' in opts:
+        sc.frame_set(f0)
+        feet = ('LeftFoot', 'RightFoot')
+        rest = min(arm.data.bones[P + n].head_local.z for n in feet)     # высота сустава стопы в позе покоя
+        drop = float(min((arm.matrix_world @ arm.pose.bones[P + n].head).z for n in feet) - rest)
+        info['ground_drop_m'] = round(drop, 3)
+        p = p - np.array([0.0, 0.0, drop])
 
     if mode == 'loop':
         span = f1 - f0
@@ -65,7 +74,7 @@ for d, f, name, mode, note in entries:
         for i, fr in enumerate(range(f0, f1 + 1)):
             sc.frame_set(fr)
             m = hb.matrix.copy()
-            m.translation -= Vector(drift * (i / span))
+            m.translation -= Vector(drift * (i / span)) + Vector((0, 0, drop))
             mats.append(m)
         for i, fr in enumerate(range(f0, f1 + 1)):
             sc.frame_set(fr)
@@ -89,7 +98,9 @@ for d, f, name, mode, note in entries:
         mats = []
         for fr in range(f0, f1 + 1):
             sc.frame_set(fr)
-            mats.append(hb.matrix.copy())
+            m = hb.matrix.copy()
+            m.translation -= Vector((0, 0, drop))
+            mats.append(m)
         for i, fr in enumerate(range(f0, f1 + 1)):
             r = p[i] - p[0]
             # у Root локальные оси: X = мир X, Y = мир Z (вверх), Z = мир -Y
