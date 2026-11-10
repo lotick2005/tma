@@ -45,6 +45,36 @@ const _BREATH_TIRED := [
 ]
 const _BREATH_CALM := ["res://audio/breath_calm_01.ogg", "res://audio/breath_calm_02.ogg"]
 
+## Второй набор записей (доработка 4в): варианты одного звука, имя_01…NN.ogg.
+const _SCREAM_MAN := [
+	"res://audio/scream_man_01.ogg", "res://audio/scream_man_02.ogg", "res://audio/scream_man_03.ogg",
+	"res://audio/scream_man_04.ogg", "res://audio/scream_man_05.ogg", "res://audio/scream_man_06.ogg",
+]
+const _GRAB := [
+	"res://audio/grab_01.ogg", "res://audio/grab_02.ogg",
+]
+const _BODY_FALL := [
+	"res://audio/body_fall_01.ogg", "res://audio/body_fall_02.ogg", "res://audio/body_fall_03.ogg",
+]
+const _THUD_FAR := [
+	"res://audio/thud_far_01.ogg", "res://audio/thud_far_02.ogg",
+]
+const _GASP_WAKE := [
+	"res://audio/gasp_wake_01.ogg", "res://audio/gasp_wake_02.ogg", "res://audio/gasp_wake_03.ogg",
+	"res://audio/gasp_wake_04.ogg",
+]
+const _WAKE_GROAN := [
+	"res://audio/wake_groan_01.ogg", "res://audio/wake_groan_02.ogg", "res://audio/wake_groan_03.ogg",
+	"res://audio/wake_groan_04.ogg", "res://audio/wake_groan_05.ogg", "res://audio/wake_groan_06.ogg",
+]
+const _POT_BREAK := [
+	"res://audio/pot_break_01.ogg", "res://audio/pot_break_02.ogg", "res://audio/pot_break_03.ogg",
+	"res://audio/pot_break_04.ogg", "res://audio/pot_break_05.ogg", "res://audio/pot_break_06.ogg",
+]
+const _WOOD_FALL := [
+	"res://audio/wood_fall_01.ogg", "res://audio/wood_fall_02.ogg", "res://audio/wood_fall_03.ogg",
+]
+
 const SOUNDS := {
 	# ─── Фон (не 3D, слой с плавным фейдом) ───────────────────────────────────────
 	## Фон тьмы: 10 мин, стерео. Паузы почти тишины — фича, не трогать.
@@ -70,15 +100,27 @@ const SOUNDS := {
 	"distant_singing": {"synth": "distant_singing", "bus": "Ambience", "db": -4.0, "loop": true, "unit": 10.0, "range": 90.0},
 
 	# ─── Вступление (этап 4) ──────────────────────────────────────────────────────
-	## Паника (этап 4в): крики толпы и топот — 3D-источники на площади; героя сбили и он упал — не из точки.
-	"crowd_panic": {"synth": "crowd_panic", "bus": "Voices", "db": -1.0, "loop": true, "unit": 4.0, "range": 60.0},
-	"crowd_stampede": {"synth": "crowd_stampede", "bus": "SFX", "db": -3.0, "loop": true, "unit": 5.0, "range": 60.0},
-	"body_hit": {"synth": "body_hit", "bus": "SFX", "db": -2.0},
-	"body_fall": {"synth": "body_fall", "bus": "SFX", "db": -2.0},
-	## Без сознания: глухой монтаж того, что герой пропустил (крики, топот, фальшивый хор, удары, огонь), 13 с.
-	"blackout_montage": {"synth": "blackout_montage", "bus": "SFX", "db": -4.0},
-	## Крик и плач толпы (заглушка этапа 4): 3D-источники среди толпы на площади.
-	"crowd_wail": {"synth": "crowd_wail", "bus": "Voices", "db": -2.0, "loop": true, "unit": 4.0, "range": 60.0},
+	## Паника (доработка 4в): записи второго набора (audio/CREDITS.md). Обе петли — стерео, поэтому не из точки:
+	## слои фона на шине Ambience (AudioManager.set_layer), в черноте глохнут через ФНЧ шины (set_bus_muffled).
+	## Паника громче базара (−13), но не режет; топот — под ней.
+	"crowd_panic": {"file": "res://audio/crowd_panic.ogg", "bus": "Ambience", "db": -9.0, "loop": true},
+	"crowd_stampede": {"file": "res://audio/crowd_stampede.ogg", "bus": "Ambience", "db": -11.0, "loop": true},
+	## Отдельные крики, моно: ближние — у бегущих людей во время паники (3D), далёкие — в черноте (глухо, за стеной).
+	"scream_man": {"file": _SCREAM_MAN, "bus": "Voices", "db": -8.0, "db_rand": 2.0, "unit": 3.0,
+		"range": 60.0, "pitch": 0.06},
+	## Героя толкнули (захват, ткань) — потом он падает (body_fall).
+	"shove": {"file": _GRAB, "bus": "SFX", "db": -5.0, "pitch": 0.04},
+	## Удар перед чернотой — и сразу звон в ушах (7 с, затихает в черноте: Intro.head_blow).
+	"hit_head": {"file": "res://audio/hit_head.ogg", "bus": "SFX", "db": -3.0},
+	"ring_ears": {"file": "res://audio/ring_ears_01.ogg", "bus": "SFX", "db": -12.0},
+	## Тело падает на камень (герой; затоптанные в панике — 3D).
+	"body_fall": {"file": _BODY_FALL, "bus": "SFX", "db": -3.0, "db_rand": 1.0, "unit": 2.5,
+		"range": 35.0, "pitch": 0.05},
+	## Глухой удар вдалеке (двери) — в черноте вступления; потом — ложные тревоги.
+	"thud_far": {"file": _THUD_FAR, "bus": "SFX", "db": -4.0, "unit": 6.0, "range": 60.0, "pitch": 0.05},
+	## Очнулся: судорожный вдох, потом кряхтит и встаёт (wake_groan 07–08 — зевки, не берём).
+	"gasp_wake": {"file": _GASP_WAKE, "bus": "SFX", "db": -8.0},
+	"wake_groan": {"file": _WAKE_GROAN, "bus": "SFX", "db": -10.0, "pitch": 0.03},
 	## Сбивчивая речь вестника — по-арамейски (§5 «Языки голосов»); пока заглушка — невнятные слоги,
 	## русский — субтитрами. Потом — запись голоса. Звучит из его головы.
 	"voice_messenger": {"synth": "voice_babble", "bus": "Voices", "db": -4.0, "variants": 4, "unit": 2.0, "range": 25.0,
@@ -122,6 +164,11 @@ const SOUNDS := {
 
 	# ─── Предметы ─────────────────────────────────────────────────────────────────
 	"shard_break": {"synth": "shard_break", "bus": "SFX", "db": -4.0, "variants": 3, "unit": 3.0, "range": 40.0, "pitch": 0.08},
+	## Глина бьётся (кувшин, горшок), дерево падает (табурет, лоток) — записи второго набора.
+	"pot_break": {"file": _POT_BREAK, "bus": "SFX", "db": -4.0, "db_rand": 1.5, "unit": 3.0, "range": 40.0,
+		"pitch": 0.06},
+	"wood_fall": {"file": _WOOD_FALL, "bus": "SFX", "db": -4.0, "db_rand": 1.5, "unit": 3.0, "range": 40.0,
+		"pitch": 0.06},
 
 	# ─── Ложные тревоги ───────────────────────────────────────────────────────────
 	"alarm_stone_fall": {"synth": "stone_fall", "bus": "SFX", "db": -6.0, "variants": 3, "unit": 3.0, "range": 40.0, "pitch": 0.1},

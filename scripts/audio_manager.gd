@@ -332,6 +332,23 @@ func is_ambience_muted() -> bool:
 
 # ─── Шины ────────────────────────────────────────────────────────────────────
 
+## «Как сквозь вату»: на шину bus ставится ФНЧ со срезом cutoff (Гц) — только во время игры, раскладка шин
+## (default_bus_layout.tres) не меняется. on = false — убрать. Вступление: чернота после удара.
+func set_bus_muffled(bus: String, on: bool, cutoff := 450.0) -> void:
+	var i := AudioServer.get_bus_index(bus)
+	if i < 0:
+		return
+	for k in range(AudioServer.get_bus_effect_count(i) - 1, -1, -1):
+		if AudioServer.get_bus_effect(i, k).has_meta("muffle"):
+			AudioServer.remove_bus_effect(i, k)
+	if on:
+		var lp := AudioEffectLowPassFilter.new()
+		lp.cutoff_hz = cutoff
+		lp.db = AudioEffectFilter.FILTER_24DB
+		lp.set_meta("muffle", true)
+		AudioServer.add_bus_effect(i, lp)
+
+
 func set_bus_volume(bus: String, db: float) -> void:
 	_user_db[bus] = db
 	if bus != "Ambience":

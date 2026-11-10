@@ -3,7 +3,7 @@ extends RefCounted
 ## Общая библиотека мокап-анимаций Mixamo (res://animations/*.glb, CLAUDE.md §2 «Анимации людей»).
 ## Каждый файл импортируется как AnimationLibrary с ретаргетом через models/mixamo_bone_map.tres —
 ## дорожки вида "%GeneralSkeleton:Hips", поэтому любая анимация подходит любой модели из res://models/.
-## Здесь все 43 собраны в одну библиотеку (имя анимации = имя файла), плюс скорость записи для speed_scale.
+## Здесь все 70 собраны в одну библиотеку (имя анимации = имя файла), плюс скорость записи для speed_scale.
 ## Таблица — animations/README.md.
 
 const DIR := "res://animations/"
@@ -26,6 +26,15 @@ const LIST := {
 	"pray_stand": ["loop", 0.0], "pray_bow": ["loop", 0.0], "pray_kneel": ["loop", 0.0],
 	"pray_kneel_down": ["once", 0.0], "pray_stand_up": ["once", 0.0],
 	"dying": ["loop", 0.0], "lying_idle": ["loop", 0.0], "lying_pose": ["pose", 0.0],
+	# Второй набор (ноябрь): паника, давка, схватка, броски
+	"yell": ["once", 0.0], "yell_out": ["once", 0.0], "point": ["once", 0.0], "point_angry": ["once", 0.0],
+	"look_around": ["loop", 0.0], "look_around_back": ["loop", 0.0], "look_nervous": ["loop", 0.0],
+	"scared_cower": ["loop", 0.0], "push_walk": ["loop", 0.67], "push_heavy": ["once", 0.0],
+	"walk_shoved": ["loop", 1.07], "stumble": ["once", 0.0], "fall_back": ["once", 0.0], "hit_fall": ["once", 0.0],
+	"hit_collapse": ["once", 0.0], "thrown": ["once", 0.0], "hold_off": ["loop", 0.0], "ground_kick": ["loop", 0.0],
+	"hold_down": ["once", 0.0], "kneel_idle": ["loop", 0.0], "kneel_inspect": ["loop", 0.0],
+	"reach_pose": ["pose", 0.0], "cover_peek": ["loop", 0.0], "throw": ["once", 0.0], "throw_big": ["once", 0.0],
+	"throw_left": ["once", 0.0], "throw_big_left": ["once", 0.0],
 }
 
 ## Дорожка кости Root — для AnimationMixer.root_motion_track.

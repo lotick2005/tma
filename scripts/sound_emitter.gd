@@ -120,6 +120,14 @@ func fade_out(time: float) -> void:
 	tw.tween_callback(done)
 
 
+## Всегда глухо, как за стеной (окклюзию больше не проверять): далёкие звуки в черноте вступления.
+func set_muffled() -> void:
+	occlude = false
+	occlusion = 1.0
+	occlusion_target = 1.0
+	_apply()
+
+
 func is_active() -> bool:
 	return _active
 
