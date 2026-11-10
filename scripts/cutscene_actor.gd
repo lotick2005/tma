@@ -4,6 +4,7 @@ extends Node3D
 ## Двигает его проигрыватель катсцен (Cutscenes, шаги «actor»): идти по точкам, повернуться, анимация.
 ## Сам актёр выбирает походку по скорости (walk / run, speed_scale — чтобы ноги не скользили) и звучит шагами.
 ##
+## Разовая анимация (yell, point…) играет один раз и стоит в последнем кадре, пока не сменить anim.
 ## Анимации (поле anim): любое имя из Anims.LIST (animations/README.md) или старые имена шагов катсцен:
 ## "idle" — стоит, дышит; "panic" — ужас, озирается (terrified); "sway" — покачивается (молится, поёт —
 ## pray_stand); "kneel" — опускается на колени (kneel_down). Пока идёт (позиция меняется), походка — сама.
@@ -86,4 +87,7 @@ func _update_anim() -> void:
 		character.play(a, 0.2, clampf(Anims.scale_for(a, _speed), 0.4, 2.5))
 	else:
 		var a: String = ALIASES.get(anim, anim)
+		# Разовая (кричит, показывает рукой) доиграла — стоит в последнем кадре, а не начинает заново
+		if a == character.current and not Anims.is_loop(a) and character.is_finished():
+			return
 		character.play(a, 0.3, 1.0)

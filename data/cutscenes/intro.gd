@@ -10,8 +10,10 @@ extends RefCounted
 ## "m_flee" — куда он бежит потом; "jar", "stall" — кувшин и лоток, которые опрокидывают; "sun" — чёрное солнце;
 ## "crowd" — середина толпы; "fall_cam", "fall_look" — где лежит голова героя и куда он смотрит вдоль мостовой;
 ## "wake_look" — куда смотрит, вставая; "goal" — на север, к кварталу и маяку.
-## Методы (ctx.target = Intro): panic(), panic_sound(), tip(имя), hero_body(видно), blackout(), blackout_sound(),
-## aftermath(), double(показать), lamp_out().
+## Методы (ctx.target = Intro): panic(), panic_sound(), tip(имя), hero_body(видно), head_blow(), blackout(),
+## blackout_sound(), aftermath(), double(показать), lamp_out().
+## Звук — записи второго набора (data/sounds.gd): толчок — shove, падение — body_fall, удар — hit_head + звон
+## ring_ears + body_fall (head_blow); очнулся — gasp_wake, через 1,6 с — wake_groan.
 ##
 ## Единственное прямое объяснение в игре — слова вестника (§1 «Недосказанность»). Больше ничего не объяснять.
 ## Вестник говорит по-арамейски (пока заглушка-бормотание), русский — только субтитры (§5 «Языки голосов»).
@@ -31,7 +33,7 @@ const STEPS := [
 			{"say": "Солдат!.. Солдат!", "who": "messenger", "sound": "voice_messenger", "time": 2.2},
 		]},
 	]},
-	{"actor": "messenger", "anim": "terrified", "face": "hero_feet"},
+	{"actor": "messenger", "anim": "yell", "face": "hero_feet"},
 	{"camera": "face", "at": "messenger"},
 
 	# ── Его слова — крупно лицо, камера медленно наезжает; в середине — лицо героя ──
@@ -40,6 +42,7 @@ const STEPS := [
 		{"steps": [
 			{"pause": 0.3},
 			{"say": "Гробы… гробы открылись…", "who": "messenger", "sound": "voice_messenger", "time": 3.0},
+			{"actor": "messenger", "anim": "point"},
 			{"say": "Мёртвые ходят. Я сам видел — ходят…", "who": "messenger", "sound": "voice_messenger", "time": 3.2},
 		]},
 	]},
@@ -47,7 +50,9 @@ const STEPS := [
 	{"parallel": [
 		{"shot": "close", "of": "messenger", "side": -15.0, "dist": 0.75, "time": 5.6, "push": 0.2, "roll": -5.0},
 		{"steps": [
+			{"actor": "messenger", "anim": "yell_out"},
 			{"say": "Святые… они встали. Они идут в город.", "who": "messenger", "sound": "voice_messenger", "time": 3.5},
+			{"actor": "messenger", "anim": "point_angry"},
 			{"say": "Беги… слышишь? Беги!", "who": "messenger", "sound": "voice_messenger", "time": 2.0},
 		]},
 	]},
@@ -80,7 +85,7 @@ const STEPS := [
 	]},
 
 	# ── Героя сбивают с ног — из его глаз: толчок, камера летит на мостовую, мимо бегут ноги, удар ──
-	{"sound": "body_hit"},
+	{"sound": "shove"},
 	{"effect": "shake", "amount": 1.0},
 	{"call": "hero_body", "args": [false]},
 	{"camera": "move", "to": "fall_cam", "look": "fall_look", "roll": 82.0, "time": 0.5, "ease": "in"},
@@ -89,7 +94,7 @@ const STEPS := [
 	{"pause": 0.7},
 	{"effect": "shake", "amount": 0.3},
 	{"pause": 2.1},
-	{"sound": "body_hit"},
+	{"call": "head_blow", "skip": true},
 	{"effect": "fade", "to": 1.0, "time": 0.04, "ease": "linear"},
 
 	# ── Без сознания: чернота; глухо, урывками — то, что он пропустил. Ничего не показываем ──
@@ -103,6 +108,12 @@ const STEPS := [
 	{"call": "aftermath"},
 	{"pause": 1.0},
 	{"parallel": [
+		{"steps": [
+			{"pause": 0.5},
+			{"sound": "gasp_wake"},
+			{"pause": 1.6},
+			{"sound": "wake_groan"},
+		]},
 		{"effect": "fade", "to": 0.0, "time": 7.0, "ease": "in"},
 		{"effect": "global", "name": "psx_fog_end", "from": 2.0, "to": 13.5, "time": 9.0, "ease": "out"},
 		{"effect": "roll", "to": 74.0, "time": 9.0},
