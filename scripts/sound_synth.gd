@@ -697,6 +697,126 @@ func crowd_wail() -> AudioStreamWAV:
 	return _wav(_normalize(_seamless(voiced, 1.5), 0.85), true)
 
 
+# ─── Вступление: паника, давка, обморок (этап 4в) ─────────────────────────────
+
+## Крики многих голосов в буфер (без петли): короткие резкие вопли с падающей высотой.
+func _screams(sec: float, voices: int, dur_min: float, dur_max: float, gap: float) -> PackedFloat32Array:
+	var saw := _saw_table(20)
+	var src := _buf(sec)
+	var n := src.size()
+	for v in voices:
+		var base := _rng.randf_range(210.0, 520.0)
+		var gain := _rng.randf_range(0.5, 1.0)
+		var ph := _rng.randf()
+		var t := _rng.randf_range(0.0, gap)
+		while t < sec - 0.2:
+			var dur := _rng.randf_range(dur_min, dur_max)
+			var f0 := base * _rng.randf_range(1.2, 1.7)
+			var f1 := base * _rng.randf_range(0.7, 0.95)
+			var start := int(t * _rate)
+			var count := mini(int(dur * _rate), n - start)
+			for i in count:
+				var k := float(i) / (dur * _rate)
+				var f := lerpf(f0, f1, k) * (1.0 + 0.03 * sin(TAU_F * 9.0 * k * dur + v))
+				ph = fmod(ph + f / _rate, 1.0)
+				src[start + i] += saw[int(ph * 2048.0)] * minf(k * 20.0, 1.0) * pow(1.0 - k, 0.5) * gain
+			t += dur + _rng.randf_range(0.05, gap)
+	return _formants(src, [[850.0, 2.5, 1.0], [1500.0, 3.0, 0.7], [2900.0, 4.0, 0.3]])
+
+
+## Топот толпы в буфер: частые глухие удары ног по камню и шарканье.
+func _stampede(sec: float) -> PackedFloat32Array:
+	var out := _buf(sec)
+	var t := 0.0
+	while t < sec - 0.3:
+		_thump(out, t, _rng.randf_range(110.0, 170.0), _rng.randf_range(45.0, 70.0), _rng.randf_range(0.025, 0.05),
+			_rng.randf_range(0.4, 1.0))
+		if _rng.randf() < 0.5:
+			_burst(out, t + 0.01, _rng.randf_range(0.02, 0.05), _rng.randf_range(0.1, 0.3), 1400.0)
+		t += _rng.randf_range(0.02, 0.09)
+	return out
+
+
+## Паника толпы: крики — короче и резче плача. Петля ~6 с, 3D-источники среди толпы.
+func crowd_panic() -> AudioStreamWAV:
+	_rate = RATE_LOW
+	var v := _screams(7.5, 12, 0.35, 1.1, 0.7)
+	var air := _lp(_noise(7.5), 2600.0)
+	_mix(v, air, 0.05)
+	_lp(v, 3000.0)
+	return _wav(_normalize(_seamless(v, 1.5), 0.85), true)
+
+
+## Топот бегущей толпы. Петля ~5 с.
+func crowd_stampede() -> AudioStreamWAV:
+	_rate = RATE_LOW
+	var b := _stampede(6.0)
+	_lp(b, 1800.0)
+	return _wav(_normalize(_seamless(b, 1.0), 0.85), true)
+
+
+## Героя сбили: тупой удар телом.
+func body_hit() -> AudioStreamWAV:
+	var b := _buf(0.5)
+	_thump(b, 0.0, 160.0, 55.0, 0.06, 1.0)
+	_burst(b, 0.0, 0.03, 0.5, 1200.0)
+	return _wav(_normalize(_edges(b), 0.9))
+
+
+## Упал на мостовую: тяжёлый удар о камень, шорох ткани; через миг — удар головой.
+func body_fall() -> AudioStreamWAV:
+	var b := _buf(1.0)
+	_thump(b, 0.0, 120.0, 40.0, 0.09, 1.0)
+	_burst(b, 0.0, 0.08, 0.4, 900.0)
+	_thump(b, 0.16, 90.0, 38.0, 0.07, 0.7)
+	_burst(b, 0.2, 0.15, 0.15, 600.0)
+	return _wav(_normalize(_edges(b), 0.9))
+
+
+## Без сознания (CLAUDE.md §2, п. 5): то, что герой пропустил, — урывками и глухо, как сквозь вату:
+## далёкие крики → тишина → топот → тишина → хор, который фальшивит → удары → треск огня → тишина.
+## Один буфер ~13 с, всё срезано фильтром низких частот. Ничего не показываем — только это.
+func blackout_montage() -> AudioStreamWAV:
+	_rate = RATE_LOW
+	var sec := 13.0
+	var out := _buf(sec)
+	# Куски: [буфер, начало с, громкость, срез Гц]
+	var screams := _screams(2.6, 8, 0.5, 1.6, 0.5)
+	var feet := _stampede(2.2)
+	var choir := _buf(3.2)
+	var freqs := [196.0, 246.9, 293.7, 392.0, 493.9]
+	var phases := [0.0, 0.3, 0.6, 0.1, 0.8]
+	var dirs := [1.0, -0.7, 0.5, -1.0, 0.8]
+	var table := _table([1.0, 0.4, 0.15])
+	for i in choir.size():
+		var t := float(i) / _rate
+		var k := t / 3.2
+		var v := 0.0
+		for j in freqs.size():
+			phases[j] = fmod(phases[j] + freqs[j] * (1.0 + (0.01 + k * 0.05) * dirs[j]) * (1.0 + 0.004 * sin(TAU_F * 5.0 * t + j)) / _rate, 1.0)
+			v += table[int(phases[j] * 2048.0)]
+		choir[i] = v
+	var thuds := _buf(1.6)
+	for at in [0.0, 0.45, 1.0]:
+		_thump(thuds, at, 110.0, 42.0, 0.09, 1.0)
+		_burst(thuds, at, 0.04, 0.4, 700.0)
+	var fire := _lp(_noise(2.4), 300.0)
+	var ft := 0.0
+	while ft < 2.3:
+		_burst(fire, ft, _rng.randf_range(0.004, 0.015), _rng.randf_range(0.3, 1.2), 1500.0)
+		ft += _rng.randf_range(0.02, 0.18)
+	for part: Array in [[screams, 0.4, 0.8, 520.0], [feet, 3.4, 0.9, 420.0], [choir, 5.9, 0.6, 600.0],
+			[thuds, 9.1, 1.0, 380.0], [fire, 10.3, 0.7, 700.0]]:
+		var b: PackedFloat32Array = part[0]
+		_normalize(b, 1.0)
+		_lp(_lp(b, part[3]), part[3])
+		# Урывками: каждый кусок всплывает и тонет
+		for i in b.size():
+			b[i] *= pow(sin(PI * float(i) / b.size()), 0.6)
+		_mix(out, b, part[2], int(float(part[1]) * _rate))
+	return _wav(_normalize(_edges(out, 0.05), 0.8))
+
+
 ## Сбивчивая речь (вестник): быстрые невнятные слоги с придыханием, сбои, паузы. Заглушка — потом запишем голос.
 func voice_babble() -> AudioStreamWAV:
 	_rate = RATE_LOW

@@ -22,9 +22,38 @@ extends Node
 ##   {"camera": "path", "points": ["p1", "p2", "p3"], "look": "x", "time": 5.0} — то же по плавной кривой;
 ##   {"camera": "eyes", "time": 1.5}                              — плавно вернуть камеру в глаза героя;
 ##   {"camera": "face", "at": "gate"}                             — мгновенно повернуть героя (за кадром, в черноте);
+##       у "move" / "path" / "eyes" — "roll": градусы — завал горизонта к концу движения (у "eyes" — к нулю).
+##
+## Кадры — шаг "shot" (CLAUDE.md §2 «Язык камеры»). Правило: что герой переживает сам — из глаз ("camera": "eyes",
+## "look"); что он видит со стороны — кадрами. Кадр ставится от актёра или точки, а не мировыми координатами:
+##   {"shot": "close", "of": "messenger", "side": 25, "time": 3.0, "push": 0.3}
+##   "shot" — тип:
+##       "close"         — крупный план: камера на высоте точки (лица), в dist метрах (0,9);
+##       "insert"        — вставка, деталь: близко (1,0 м) и чуть сверху (0,6 м) на предмет;
+##       "low"           — нижний ракурс: камера у земли (0,25 м), смотрит снизу вверх (2,2 м от цели);
+##       "high_wide"     — верхний общий план: высоко (8 м) и далеко (9 м), смотрит вниз;
+##       "over_shoulder" — через плечо: из-за плеча "from" (по умолчанию героя) на "of";
+##   "of"     — кто или что в кадре: имя актёра, точки или "hero" (у актёра цель — голова);
+##   "side"   — с какой стороны камера, градусы вокруг цели: 0 — спереди (куда смотрит актёр), 90 — слева от него,
+##              −90 — справа, 180 — сзади; или "front" / "left" / "right" / "back". У точки (не актёра) стороны —
+##              по сторонам света: 0 — камера к северу от точки, 90 — к западу, −90 — к востоку, 180 — к югу.
+##              У "over_shoulder" — через какое плечо: "right" (по умолчанию) или "left";
+##   "dist", "height" — свои расстояние и высота камеры, м (высота: у close / insert — от цели, у low / high_wide —
+##              от земли под целью, у over_shoulder — от головы "from");
+##   "look"   — смотреть не на "of", а на эту точку;  "fov" — угол обзора (у close и insert по умолчанию уже);
+##   "time"   — сколько держать кадр, с (шаг ждёт). Без time — кадр встал, сценарий идёт дальше;
+##              фоновый шаг в parallel ("background": true) держит кадр, пока идут остальные;
+##   "blend"  — плавный переход из прошлого положения камеры за столько секунд (по умолчанию жёсткая склейка);
+##   "push"   — медленный наезд: за time камера подползает к цели на столько метров;
+##   "shake"  — дрожь 0…1 на этот кадр (удар, давка, крик);  "roll" — завал горизонта, градусы (тревога);
+##   "track": false — не следить за целью, если она движется (по умолчанию следит).
+##   Из кадра в глаза героя — {"camera": "eyes", "time": 0} (склейка) или с временем (пролёт).
+##   Дрожь и завал отдельно (работают и в глазах героя): {"effect": "shake", "amount": 0.8, "time": 1.5} — дрожь,
+##   которая затухает за time (без time — держится, "amount": 0 — выключить); {"effect": "roll", "to": 12, "time": 2}.
 ##   {"actor": "messenger", "walk": ["p1", "p2"], "speed": 4.0}   — идти / бежать по точкам (ждёт, пока дойдёт);
 ##   {"actor": "messenger", "turn_to": "hero", "time": 0.4}       — повернуться;
 ##   {"actor": "messenger", "anim": "panic"}                      — анимация (CutsceneActor.anim);
+##   {"actor": "messenger", "place": "p1", "face": "hero"}        — мгновенно поставить в точку / повернуть лицом;
 ##   {"actor": "messenger", "show": false}                        — показать / спрятать;
 ##   {"say": "Гробы открылись…", "who": "messenger", "sound": "voice_messenger", "time": 3.0} — реплика:
 ##       субтитры time секунд, звук — 3D из головы who (без who — не из точки);
@@ -32,6 +61,7 @@ extends Node
 ##   {"layer": "bg", "sound": "ambient_drone", "fade": 3.0}       — фон (AudioManager.set_layer); "clear": true — убрать;
 ##   {"effect": "fade", "to": 1.0, "time": 0.5}                   — затемнение экрана (0 — нет, 1 — черно), "color";
 ##   {"effect": "lighting", "from": "day", "to": "darkness", "time": 14.0} — смена пресета освещения;
+##       "amount": 0.5 — дойти только до половины пути (солнце начало тускнеть);
 ##   {"effect": "global", "name": "psx_fog_end", "from": 2.0, "to": 13.5, "time": 7.0} — глобальный параметр шейдеров;
 ##   {"effect": "light", "id": "flash", "at": "p1", "color": Color.WHITE, "energy": 4.0, "range": 12.0, "time": 0.3}
 ##       — свет в точке (создаётся, яркость плавно до energy); "remove": true — убрать;
@@ -59,8 +89,17 @@ var skipping := false
 var _ctx := {}
 var _tweens: Array[Tween] = []
 var _player: Player
-var _cam: Camera3D
+## Своя камера: _cam — «штатив» (его двигают шаги), _lens — сама камера на нём (на ней — дрожь и завал).
+var _cam: Node3D
+var _lens: Camera3D
 var _detached := false
+## Дрожь 0…1 (и на сколько в секунду затухает), завал горизонта (рад) — и для своей камеры, и для глаз героя.
+var _shake := 0.0
+var _shake_decay := 0.0
+var _roll := 0.0
+var _shake_t := 0.0
+## Номер текущего кадра: новый кадр или движение камеры прекращает удержание прошлого.
+var _shot_id := 0
 var _hold := 0.0
 var _lights := {}
 var _say_id := 0
@@ -115,6 +154,11 @@ func play(steps: Array, ctx := {}) -> void:
 		(_lights[id] as Node).queue_free()
 	_lights.clear()
 	_set_bars(false)
+	_shake = 0.0
+	_shake_decay = 0.0
+	_roll = 0.0
+	_shot_id += 1
+	_apply_lens()
 	if _player:
 		_player.set_locked(false)
 	playing = false
@@ -138,8 +182,13 @@ func skip() -> void:
 
 
 func _process(delta: float) -> void:
-	if _detached and _cam and _player:
-		_cam.far = _player.eye_camera().far
+	if _detached and _lens and _player:
+		_lens.far = _player.eye_camera().far
+	if playing:
+		_shake_t += delta
+		if _shake_decay > 0.0:
+			_shake = maxf(0.0, _shake - _shake_decay * delta)
+		_apply_lens()
 	if not playing or skipping:
 		return
 	if _ctx.get("skippable", true) and Input.is_action_pressed("interact"):
@@ -182,6 +231,8 @@ func _exec(s: Dictionary) -> void:
 		await _run(s.steps)
 	elif s.has("pause"):
 		await _sleep(float(s.pause))
+	elif s.has("shot"):
+		await _shot(s)
 	elif s.has("camera"):
 		await _camera_step(s)
 	elif s.has("actor"):
@@ -303,6 +354,9 @@ func _camera_step(s: Dictionary) -> void:
 				_player.set_look(b.x, float(s.get("pitch", b.y)))
 		"move", "path":
 			_detach()
+			_shot_id += 1
+			var roll0 := _roll
+			var roll1 := deg_to_rad(float(s.roll)) if s.has("roll") else _roll
 			var pts: Array[Vector3] = [_cam.global_position]
 			if s.camera == "move":
 				pts.append(_point(s.to))
@@ -313,17 +367,23 @@ func _camera_step(s: Dictionary) -> void:
 			var from_q := _cam.global_basis.get_rotation_quaternion()
 			var fly := func(k: float) -> void:
 				_cam.global_position = _spline(pts, k)
+				_roll = lerpf(roll0, roll1, k)
 				if look != null:
 					_cam.global_basis = _look_basis(_cam.global_position, _point(look))
 			await _animate(time, fly, ease)
 			if look == null:
 				_cam.global_basis = Basis(from_q)
 		"eyes":
+			_shot_id += 1
+			var roll0 := _roll
+			var roll1 := deg_to_rad(float(s.get("roll", 0.0)))
 			if not _detached:
+				await _animate(time, func(k: float) -> void: _roll = lerpf(roll0, roll1, k), ease)
 				return
 			var start := _cam.global_transform
 			var back := func(k: float) -> void:
-				_cam.global_transform = start.interpolate_with(_player.eye_camera().global_transform, k)
+				_roll = lerpf(roll0, roll1, k)
+				_cam.global_transform = start.interpolate_with(_eye_transform(), k)
 			await _animate(time, back, ease)
 			_attach()
 		_:
@@ -378,19 +438,24 @@ func _detach() -> void:
 		return
 	var eye := _player.eye_camera()
 	if _cam == null or not is_instance_valid(_cam):
-		_cam = Camera3D.new()
+		_cam = Node3D.new()
 		_cam.name = "CutsceneCamera"
+		_lens = Camera3D.new()
+		_lens.name = "Lens"
+		_cam.add_child(_lens)
 	if _cam.get_parent() != get_tree().current_scene:
 		if _cam.get_parent():
 			_cam.get_parent().remove_child(_cam)
 		get_tree().current_scene.add_child(_cam)
-	_cam.fov = eye.fov
-	_cam.near = eye.near
-	_cam.far = eye.far
-	_cam.cull_mask = eye.cull_mask
-	_cam.global_transform = eye.global_transform
-	_cam.make_current()
+	_lens.fov = eye.fov
+	_lens.near = eye.near
+	_lens.far = eye.far
+	_lens.cull_mask = eye.cull_mask
+	_cam.global_transform = _eye_transform()
+	eye.rotation = Vector3.ZERO
 	_detached = true
+	_apply_lens()
+	_lens.make_current()
 	# Камера ушла из глаз — голову героя видно
 	_player.set_head_visible(true)
 
@@ -398,9 +463,152 @@ func _detach() -> void:
 func _attach() -> void:
 	if not _detached:
 		return
+	_detached = false
+	_apply_lens()
 	_player.eye_camera().make_current()
 	_player.set_head_visible(false)
-	_detached = false
+
+
+## Где глаза героя — без дрожи и завала (их добавляет _apply_lens).
+func _eye_transform() -> Transform3D:
+	var eye := _player.eye_camera()
+	return (eye.get_parent() as Node3D).global_transform * Transform3D(Basis(), eye.position)
+
+
+## Дрожь и завал горизонта — на своей камере или на глазах героя (поворот самой камеры, штатив не трогаем).
+func _apply_lens() -> void:
+	var t := _shake_t
+	var a := _shake
+	var rot := Vector3(
+		(sin(t * 37.0) + sin(t * 61.3 + 1.7)) * 0.012 * a,
+		(sin(t * 43.1 + 0.6) + sin(t * 71.7 + 2.9)) * 0.012 * a,
+		_roll + sin(t * 29.3 + 4.1) * 0.02 * a)
+	if _detached and _lens:
+		_lens.rotation = rot
+	elif _player:
+		_player.eye_camera().rotation = rot
+
+
+# ─── Кадры (шаг "shot") ──────────────────────────────────────────────────────
+
+## Настройки кадров по умолчанию: расстояние, высота, сторона (градусы), угол обзора (0 — как у глаз).
+const SHOTS := {
+	"close": {"dist": 0.9, "height": 0.0, "side": 20.0, "fov": 50.0},
+	"insert": {"dist": 1.0, "height": 0.6, "side": 30.0, "fov": 48.0},
+	"low": {"dist": 2.2, "height": 0.25, "side": 15.0, "fov": 0.0},
+	"high_wide": {"dist": 9.0, "height": 8.0, "side": 0.0, "fov": 0.0},
+	"over_shoulder": {"dist": 0.55, "height": 0.12, "side": "right", "fov": 0.0},
+}
+const SIDES := {"front": 0.0, "left": 90.0, "right": -90.0, "back": 180.0}
+
+
+## Куда смотрит тот, кто в кадре (по горизонтали): актёр — лицом (−Z), герой — взглядом, точка — на север.
+func _facing(spec: Variant) -> Vector3:
+	var key := String(spec) if not spec is Vector3 else ""
+	if key == "hero" or key == "hero_feet":
+		return -_player.global_basis.z
+	var actors: Dictionary = _ctx.get("actors", {})
+	if actors.has(key):
+		var b := (actors[key] as Node3D).global_basis
+		return Vector3(-b.z.x, 0.0, -b.z.z).normalized()
+	return Vector3.FORWARD
+
+
+## Земля под тем, кто в кадре.
+func _base_y(spec: Variant) -> float:
+	var key := String(spec) if not spec is Vector3 else ""
+	if key == "hero" or key == "hero_feet":
+		return _player.global_position.y
+	var actors: Dictionary = _ctx.get("actors", {})
+	if actors.has(key):
+		return (actors[key] as Node3D).global_position.y
+	return _point(spec).y
+
+
+## Где стоит камера кадра и куда смотрит: [позиция, цель].
+func _shot_frame(s: Dictionary, pushed: float) -> Array:
+	var kind: String = s.shot
+	var def: Dictionary = SHOTS.get(kind, SHOTS.close)
+	var subject := _point(s.of)
+	var target: Vector3 = _point(s.look) if s.has("look") else subject
+	var dist := float(s.get("dist", def.dist))
+	var height := float(s.get("height", def.height))
+	var side: Variant = s.get("side", def.side)
+	var pos: Vector3
+	if kind == "over_shoulder":
+		var from := _point(s.get("from", "hero"))
+		var to := subject - from
+		to.y = 0.0
+		to = to.normalized() if to.length_squared() > 1e-6 else Vector3.FORWARD
+		var right := to.cross(Vector3.UP)
+		var sgn := -1.0 if String(side) == "left" else 1.0
+		pos = from - to * dist + right * 0.32 * sgn + Vector3.UP * height
+	else:
+		var deg := float(SIDES[side]) if side is String else float(side)
+		var dir := _facing(s.of).rotated(Vector3.UP, deg_to_rad(deg))
+		pos = subject + dir * dist
+		if kind == "low" or kind == "high_wide":
+			pos.y = _base_y(s.of) + height
+			if kind == "low" and not s.has("look"):
+				target = subject + Vector3.UP * 0.15
+			if kind == "high_wide" and not s.has("look"):
+				target = Vector3(subject.x, _base_y(s.of) + 0.8, subject.z)
+		else:
+			pos.y = subject.y + height
+	if pushed > 0.0:
+		var to_t := target - pos
+		pos += to_t.normalized() * minf(pushed, maxf(to_t.length() - 0.35, 0.0))
+	return [pos, target]
+
+
+func _shot(s: Dictionary) -> void:
+	if _player == null:
+		return
+	_detach()
+	_shot_id += 1
+	var id := _shot_id
+	var def: Dictionary = SHOTS.get(s.shot, SHOTS.close)
+	var fov := float(s.get("fov", def.fov))
+	var fov1 := fov if fov > 0.0 else _player.eye_camera().fov
+	var roll1 := deg_to_rad(float(s.get("roll", 0.0)))
+	var frame := _shot_frame(s, 0.0)
+	var blend := float(s.get("blend", 0.0))
+	if blend > 0.0 and not skipping:
+		# Плавный переход из прошлого положения камеры
+		var from := _cam.global_transform
+		var fov0 := _lens.fov
+		var roll0 := _roll
+		var fly := func(k: float) -> void:
+			var f := _shot_frame(s, 0.0)
+			var to := Transform3D(_look_basis(f[0], f[1]), f[0])
+			_cam.global_transform = from.interpolate_with(to, k)
+			_lens.fov = lerpf(fov0, fov1, k)
+			_roll = lerpf(roll0, roll1, k)
+		await _animate(blend, fly, s.get("ease", "inout"))
+	else:
+		_cam.global_position = frame[0]
+		_cam.global_basis = _look_basis(frame[0], frame[1])
+	_lens.fov = fov1
+	_roll = roll1
+	_shake = float(s.get("shake", 0.0))
+	_shake_decay = 0.0
+	_apply_lens()
+	# Удержание: следим за целью, наезжаем. Без time (и не фоновый) — кадр встал, сценарий идёт дальше
+	var alive: Callable = s.get("_alive", Callable())
+	var time := float(s.get("time", INF if alive.is_valid() else 0.0))
+	var push := float(s.get("push", 0.0))
+	var track: bool = s.get("track", true)
+	var t := 0.0
+	while t < time and not skipping and id == _shot_id and (not alive.is_valid() or alive.call()):
+		await get_tree().process_frame
+		t += get_process_delta_time()
+		if id != _shot_id:
+			break
+		if track or push > 0.0:
+			var k := clampf(t / time, 0.0, 1.0) if time < INF else 0.0
+			var f := _shot_frame(s, push * k)
+			_cam.global_position = f[0]
+			_cam.global_basis = _look_basis(f[0], f[1])
 
 
 # ─── Персонажи ───────────────────────────────────────────────────────────────
@@ -411,6 +619,12 @@ func _actor_step(s: Dictionary) -> void:
 		return
 	if s.has("show"):
 		a.visible = s.show
+	if s.has("place"):
+		a.global_position = _point(s.place)
+	if s.has("face"):
+		var fd := _point(s.face) - a.global_position
+		if Vector2(fd.x, fd.z).length_squared() > 1e-6:
+			a.rotation.y = atan2(-fd.x, -fd.z)
 	if s.has("anim") and "anim" in a:
 		a.anim = s.anim
 	if s.has("turn_to"):
@@ -473,7 +687,17 @@ func _effect(s: Dictionary) -> void:
 			if level == null or not level.has_method("blend_lighting"):
 				push_error("Cutscenes: у ctx.level нет blend_lighting")
 				return
-			await _animate(time, func(k: float) -> void: level.blend_lighting(s.from, s.to, k), s.get("ease", "linear"))
+			var amount := float(s.get("amount", 1.0))
+			await _animate(time, func(k: float) -> void: level.blend_lighting(s.from, s.to, k * amount), s.get("ease", "linear"))
+		"shake":
+			_shake = float(s.get("amount", 0.5))
+			_shake_decay = _shake / time if s.has("time") and time > 0.0 else 0.0
+			if skipping:
+				_shake = 0.0
+		"roll":
+			var r0 := _roll
+			var r1 := deg_to_rad(float(s.get("to", 0.0)))
+			await _animate(time if s.has("time") else 0.0, func(k: float) -> void: _roll = lerpf(r0, r1, k), ease)
 		"global":
 			var n: String = s.name
 			var v0: float = s.get("from", PsxMaterial.global_param(n))

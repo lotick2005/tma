@@ -7,6 +7,9 @@ extends Node3D
 ##  • sing — поёт: молится стоя (pray_stand), лицом к Храму.
 ## set_wailing(true) — «песни в плач» (Ам 8:10): все в ужасе (terrified), часть опускается на колени.
 ## play_person(i, анимация) — любая анимация человеку (для катсцен: shoved, fall_flat, run…).
+## flee(i, путь, скорость, задержка, конец) — паника (вступление, этап 4в): человек замирает в ужасе на «задержку»,
+## потом бежит по точкам; в конце — "hide" (убежал, пропал из виду), "fall" (упал ничком и остался лежать —
+## затоптан), "bang" (добежал до двери и бьётся в неё).
 ## Коллизия — цилиндр на каждого (герой не проходит сквозь людей), двигается вместе с ним.
 ## Дальние обновляют анимацию реже (LOD_*): каждый человек — 1 вызов отрисовки, скиннинг — главная цена.
 
@@ -101,7 +104,20 @@ func play_person(i: int, anim_name: String, blend := 0.25) -> void:
 		_set_anim(p, anim_name, blend)
 
 
-## Убрать толпу (и её коллизию) — люди исчезли.
+## Паника: человек i ждёт delay секунд (в ужасе), потом бежит по route со скоростью speed; end — что в конце пути:
+## "hide" — пропал из виду, "fall" — падает ничком (fall_flat, ещё ~2,9 м вперёд) и остаётся лежать, "bang" — бьётся в дверь.
+## Коллизия с бегущих снимается (герой в это время не управляется).
+func flee(i: int, route: PackedVector3Array, speed: float, delay: float, end := "hide") -> void:
+	var p := _people[i]
+	p.flee = {"route": route, "at": 0, "speed": speed, "delay": delay, "end": end, "done": false}
+	p.forced = ""
+	if p.has("shape"):
+		(p.shape as CollisionShape3D).disabled = true
+	_set_anim(p, "terrified", 0.3, _rng.randf_range(1.0, 1.4))
+	(p.model as CharacterModel).randomize_phase(_rng)
+
+
+## Убрать толпу (и её коллизию) — людей на площади больше нет.
 func vanish() -> void:
 	visible = false
 	set_process(false)
@@ -132,6 +148,9 @@ func _update(delta: float) -> void:
 	wailing = move_toward(wailing, _wail_target, delta * 0.5)
 	for p in _people:
 		var moving := false
+		if p.has("flee"):
+			_update_flee(p, delta)
+			continue
 		if p.forced != "":
 			pass
 		elif wailing > 0.1:
@@ -176,6 +195,51 @@ func _update(delta: float) -> void:
 	_update_lod(delta)
 
 
+## Паника: ждёт, бежит по точкам, в конце — пропадает, падает или бьётся в дверь.
+func _update_flee(p: Dictionary, delta: float) -> void:
+	var f: Dictionary = p.flee
+	var m: CharacterModel = p.model
+	if f.done:
+		return
+	if f.delay > 0.0:
+		f.delay -= delta
+		return
+	var route: PackedVector3Array = f.route
+	var left: float = f.speed * delta
+	while left > 0.0 and f.at < route.size():
+		var to: Vector3 = route[f.at] - p.pos
+		to.y = 0.0
+		var d := to.length()
+		if d <= left:
+			p.pos = Vector3(route[f.at].x, p.pos.y, route[f.at].z)
+			left -= d
+			f.at += 1
+		else:
+			p.pos += to / d * left
+			p.turn = atan2(-to.x, -to.z)
+			left = 0.0
+	p.yaw = lerp_angle(p.yaw, p.turn, 1.0 - exp(-10.0 * delta))
+	m.position = p.pos
+	m.rotation.y = p.yaw
+	if f.at < route.size():
+		var a := "run_fast" if f.speed > 5.0 else "run"
+		if p.anim != a:
+			_set_anim(p, a, 0.2, clampf(Anims.scale_for(a, f.speed), 0.6, 1.6))
+			m.randomize_phase(_rng)
+		return
+	f.done = true
+	match f.end:
+		"fall":
+			m.rotation.y = p.turn
+			m.set_update_interval(0.0)
+			m.play("fall_flat", 0.15, 1.0, true)
+		"bang":
+			_set_anim(p, "terrified", 0.2, 1.5)
+			m.randomize_phase(_rng)
+		_:
+			m.visible = false
+
+
 ## Дальние — реже обновлять анимацию (раз в 0,5 с проверять расстояния).
 func _update_lod(delta: float) -> void:
 	_lod_timer -= delta
@@ -187,6 +251,8 @@ func _update_lod(delta: float) -> void:
 		return
 	var eye := cam.global_position
 	for p in _people:
+		if p.has("flee") and p.flee.done:
+			continue
 		var d := eye.distance_to(global_transform * (p.pos as Vector3))
 		var interval := 0.0
 		for k in LOD_DISTANCES.size():
