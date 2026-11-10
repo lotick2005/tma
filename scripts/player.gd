@@ -244,6 +244,29 @@ func crouch(on: bool) -> void:
 	_set_crouched(on)
 
 
+## Перенести героя (чекпойнт): точка ног, взгляд по горизонтали; тело и камера встают сразу.
+func teleport(pos: Vector3, yaw: float, pitch := 0.0) -> void:
+	global_position = pos
+	velocity = Vector3.ZERO
+	set_look(yaw, pitch)
+	_set_crouched(false)
+	_body.snap()
+
+
+## Левая рука и шум героя (HeroHands, этап 5).
+func hands() -> HeroHands:
+	return get_node_or_null("Hands") as HeroHands
+
+
+## Руки (hero_arms.gd): светильник, предмет в левой, «схватили».
+func arms() -> Node3D:
+	return _arms
+
+
+func is_crouched() -> bool:
+	return _crouched
+
+
 func set_lamp(out: bool, instant := false) -> void:
 	if _arms.lamp_out != out:
 		_arms.set_lamp_out(out, instant)

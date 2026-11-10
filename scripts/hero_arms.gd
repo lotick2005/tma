@@ -12,6 +12,9 @@ extends Node3D
 ## кисть заходит в кадр снизу слева); у стены прижимается к телу.
 ## Сам IK — модификатор скелета (_ArmIK): он работает после анимации и после позвоночника (hero_body.gd).
 ## Старые руки — hero_arms_proc.gd.
+## Этап 5: левая держит взятый предмет перед собой слева (set_left_holding), бросает — кости левой руки
+## берутся из анимации throw_left (set_arm_anim, время ведёт HeroHands); схватили — обе руки перед лицом
+## (set_struggle: поза hold_off + IK к точкам перед камерой с дрожью).
 
 ## Светильник достали (true) или убрали (false). Срабатывает в начале анимации.
 signal lamp_changed(out: bool)
@@ -56,6 +59,12 @@ signal lamp_changed(out: bool)
 
 ## Левая кисть у стены: от груди (кость UpperChest) в осях тела, м.
 const LEFT_PRESSED := Vector3(-0.13, -0.33, -0.16)
+## Левая держит предмет: кисть от груди (в осях тела) — перед собой, левее, ниже груди.
+@export var left_hold_offset := Vector3(-0.17, 0.24, -0.42)
+## Схватили: кисти перед камерой (в осях камеры), м.
+@export var struggle_left := Vector3(-0.13, -0.1, -0.32)
+@export var struggle_right := Vector3(0.13, -0.12, -0.3)
+@export var struggle_shake := 0.035
 
 ## В руке ли светильник. Сохранять — через GameState.lamp_out (это делает Player).
 var lamp_out := true
@@ -76,6 +85,14 @@ var _lamp_vel := Vector3.ZERO
 var _lamp_ready := false
 ## Направление предплечья правой руки (в осях Player, по горизонтали) — пальцы по нему.
 var _forearm := Vector3.FORWARD
+var _hold := 0.0
+var _hold_target := 0.0
+## Анимация поверх костей руки: [имя, время, вес, сторона ("Left" / "Right" / "Both")].
+var _arm_anim := ["", 0.0, 0.0, "Left"]
+var _anim_tracks := {}
+var _struggle := 0.0
+var _struggle_target := 0.0
+var _struggle_t := 0.0
 
 @onready var _camera: Camera3D = get_parent()
 @onready var _body: HeroBody = get_node(body_path)
@@ -98,6 +115,8 @@ func _ready() -> void:
 	for side in ["Left", "Right"]:
 		for b in ["UpperArm", "LowerArm", "Hand", "IndexProximal", "IndexIntermediate", "IndexDistal"]:
 			_bones[side + b] = skel.find_bone(side + b)
+	for side in ["Left", "Right"]:
+		_bones[side + "Shoulder"] = skel.find_bone(side + "Shoulder")
 	for b in ["Chest", "UpperChest"]:
 		_bones[b] = skel.find_bone(b)
 	_chest_rest = skel.get_bone_global_rest(_bones["Chest"]).basis.orthonormalized()
@@ -136,7 +155,38 @@ func set_lamp_out(out: bool, instant: bool = false) -> void:
 	lamp_changed.emit(out)
 
 
+## Левая держит предмет перед собой (HeroHands).
+func set_left_holding(on: bool) -> void:
+	_hold_target = 1.0 if on else 0.0
+
+
+## Кости руки side ("Left", "Right", "Both") — из анимации anim_name в момент time с весом weight (0 — выкл).
+func set_arm_anim(anim_name: String, time: float, weight: float, side := "Left") -> void:
+	_arm_anim = [anim_name, time, weight, side]
+
+
+## Схватили: обе руки перед лицом, отталкивают (true) / отпустили (false).
+func set_struggle(on: bool) -> void:
+	_struggle_target = 1.0 if on else 0.0
+
+
+## Где в левой кисти лежит предмет (в мире): между запястьем и пальцами, ладонью вверх.
+func left_grip() -> Transform3D:
+	var skel := _body.skeleton
+	var h := skel.get_bone_global_pose(_bones["LeftHand"])
+	var f := skel.get_bone_global_pose(_bones["LeftIndexProximal"])
+	var at := h.origin.lerp(f.origin, 0.75)
+	var fingers := (f.origin - h.origin).normalized()
+	var up := (skel.global_basis.inverse() * Vector3.UP)
+	var side := fingers.cross(up).normalized()
+	var b := Basis(side, up - fingers * up.dot(fingers), -fingers).orthonormalized()
+	return skel.global_transform * Transform3D(b, at - b.y * 0.02)
+
+
 func _process(delta: float) -> void:
+	_hold = move_toward(_hold, _hold_target, delta / 0.3)
+	_struggle = move_toward(_struggle, _struggle_target, delta / 0.2)
+	_struggle_t += delta
 	_pull = lerpf(_pull, _wall_pull(), 1.0 - exp(-10.0 * delta))
 	var running := _player != null and _player.move_mode == Player.MoveMode.RUN
 	_run = lerpf(_run, 1.0 if running else 0.0, 1.0 - exp(-5.0 * delta))
@@ -227,6 +277,31 @@ func _apply(delta: float) -> void:
 		var uc := skel.get_bone_global_pose(_bones["UpperChest"]).origin
 		var left := Transform3D(Basis(), uc + body_basis * LEFT_PRESSED)
 		_solve_arm("Left", left, body_basis * Vector3(-0.6, -1.0, 0.4), true, _pull)
+
+	# Левая держит предмет: перед собой, левее, у стены — ближе к телу
+	var throw_w: float = _arm_anim[2] if _arm_anim[0] != "" else 0.0
+	var hold_w := _hold * (1.0 - throw_w) * (1.0 - _struggle)
+	if hold_w > 0.001:
+		var ho := left_hold_offset.lerp(Vector3(-0.15, 0.05, -0.22), _pull)
+		var hp := chest.origin + body_basis * ho
+		var lb := skel.get_bone_global_pose(_bones["LeftHand"]).basis
+		_solve_arm("Left", Transform3D(lb, hp), body_basis * Vector3(-0.8, -1.0, 0.3), true, hold_w)
+
+	# Бросок: кости руки — из анимации (кадр ведёт HeroHands)
+	if throw_w > 0.001:
+		_apply_arm_anim(_arm_anim[0], _arm_anim[1], throw_w, _arm_anim[3])
+
+	# Схватили: руки перед лицом (поза hold_off), кисти — к точкам перед камерой, дрожат
+	if _struggle > 0.001:
+		_apply_arm_anim("hold_off", fmod(_struggle_t, 4.7), _struggle, "Both")
+		var cam_xf := to_skel * _camera.global_transform
+		var j := Vector3(sin(_struggle_t * 23.0), sin(_struggle_t * 31.0 + 1.0), sin(_struggle_t * 17.0)) * struggle_shake
+		var lt := cam_xf * (struggle_left + j)
+		var rt := cam_xf * (struggle_right - j)
+		var lhb := skel.get_bone_global_pose(_bones["LeftHand"]).basis
+		var rhb := skel.get_bone_global_pose(_bones["RightHand"]).basis
+		_solve_arm("Left", Transform3D(lhb, lt), body_basis * Vector3(-0.8, -1.0, 0.2), true, _struggle)
+		_solve_arm("Right", Transform3D(rhb, rt), body_basis * Vector3(0.8, -1.0, 0.2), true, _struggle)
 
 	# Светильник лежит в настоящей кисти, даже если рука не дотянулась
 	var hand := skel.get_bone_global_pose(_bones["RightHand"])
@@ -328,3 +403,29 @@ func _curl(side: String, deg: float) -> void:
 	for b in ["IndexProximal", "IndexIntermediate", "IndexDistal"]:
 		var i: int = _bones[side + b]
 		skel.set_bone_pose_rotation(i, skel.get_bone_pose_rotation(i) * Quaternion(Vector3.RIGHT, deg_to_rad(deg / 3.0)))
+
+
+## Повороты костей руки из анимации поверх текущей позы (с весом). side — "Left", "Right" или "Both".
+func _apply_arm_anim(anim_name: String, time: float, weight: float, side: String) -> void:
+	var skel := _body.skeleton
+	var tracks: Dictionary = _anim_tracks.get(anim_name, {})
+	if tracks.is_empty():
+		var a := Anims.library().get_animation(anim_name)
+		if a == null:
+			return
+		for i in a.get_track_count():
+			if a.track_get_type(i) != Animation.TYPE_ROTATION_3D:
+				continue
+			var bone := skel.find_bone(String(a.track_get_path(i)).get_slice(":", 1))
+			if bone >= 0:
+				tracks[bone] = i
+		_anim_tracks[anim_name] = tracks
+	var a := Anims.library().get_animation(anim_name)
+	var sides := ["Left", "Right"] if side == "Both" else [side]
+	for sd in sides:
+		for b in ["Shoulder", "UpperArm", "LowerArm", "Hand"]:
+			var bone: int = _bones.get(sd + b, -1)
+			if bone < 0 or not tracks.has(bone):
+				continue
+			var q := a.rotation_track_interpolate(tracks[bone], clampf(time, 0.0, a.length))
+			skel.set_bone_pose_rotation(bone, skel.get_bone_pose_rotation(bone).slerp(q, weight))

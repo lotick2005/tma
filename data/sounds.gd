@@ -75,6 +75,35 @@ const _WOOD_FALL := [
 	"res://audio/wood_fall_01.ogg", "res://audio/wood_fall_02.ogg", "res://audio/wood_fall_03.ogg",
 ]
 
+## Этап 5: святые, схватка, предметы с физикой.
+const _SAINT_GROWL := [
+	"res://audio/saint_growl_01.ogg", "res://audio/saint_growl_02.ogg", "res://audio/saint_growl_03.ogg", "res://audio/saint_growl_04.ogg", "res://audio/saint_growl_05.ogg", "res://audio/saint_growl_06.ogg", "res://audio/saint_growl_07.ogg", "res://audio/saint_growl_08.ogg",
+]
+const _SAINT_SNIFF := [
+	"res://audio/saint_sniff_01.ogg", "res://audio/saint_sniff_02.ogg",
+]
+const _STEPS_BAREFOOT := [
+	"res://audio/steps_barefoot_01.ogg", "res://audio/steps_barefoot_02.ogg", "res://audio/steps_barefoot_03.ogg", "res://audio/steps_barefoot_04.ogg", "res://audio/steps_barefoot_05.ogg", "res://audio/steps_barefoot_06.ogg", "res://audio/steps_barefoot_07.ogg", "res://audio/steps_barefoot_08.ogg", "res://audio/steps_barefoot_09.ogg", "res://audio/steps_barefoot_10.ogg",
+]
+const _CLOTH_RUSTLE := [
+	"res://audio/cloth_rustle_01.ogg", "res://audio/cloth_rustle_02.ogg", "res://audio/cloth_rustle_03.ogg", "res://audio/cloth_rustle_04.ogg", "res://audio/cloth_rustle_05.ogg", "res://audio/cloth_rustle_06.ogg", "res://audio/cloth_rustle_07.ogg", "res://audio/cloth_rustle_08.ogg", "res://audio/cloth_rustle_09.ogg", "res://audio/cloth_rustle_10.ogg", "res://audio/cloth_rustle_11.ogg", "res://audio/cloth_rustle_12.ogg", "res://audio/cloth_rustle_13.ogg", "res://audio/cloth_rustle_14.ogg",
+]
+const _HIT_WET := [
+	"res://audio/hit_wet_01.ogg", "res://audio/hit_wet_02.ogg", "res://audio/hit_wet_03.ogg", "res://audio/hit_wet_04.ogg",
+]
+const _CHOKE := [
+	"res://audio/choke_01.ogg", "res://audio/choke_02.ogg", "res://audio/choke_03.ogg", "res://audio/choke_04.ogg", "res://audio/choke_05.ogg", "res://audio/choke_06.ogg", "res://audio/choke_07.ogg", "res://audio/choke_08.ogg",
+]
+const _POT_WOBBLE := [
+	"res://audio/pot_wobble_01.ogg", "res://audio/pot_wobble_02.ogg", "res://audio/pot_wobble_03.ogg",
+]
+const _STONE_DROP := [
+	"res://audio/stone_drop_01.ogg", "res://audio/stone_drop_02.ogg", "res://audio/stone_drop_03.ogg", "res://audio/stone_drop_04.ogg", "res://audio/stone_drop_05.ogg",
+]
+const _WOOD_CLACK := [
+	"res://audio/wood_clack_01.ogg", "res://audio/wood_clack_02.ogg", "res://audio/wood_clack_03.ogg", "res://audio/wood_clack_04.ogg", "res://audio/wood_clack_05.ogg",
+]
+
 const SOUNDS := {
 	# ─── Фон (не 3D, слой с плавным фейдом) ───────────────────────────────────────
 	## Фон тьмы: 10 мин, стерео. Паузы почти тишины — фича, не трогать.
@@ -143,6 +172,33 @@ const SOUNDS := {
 
 	# ─── Святые (этап 5) ──────────────────────────────────────────────────────────
 	"saint_chant": {"synth": "saint_chant", "bus": "Voices", "db": -6.0, "loop": true, "unit": 2.0, "range": 25.0},
+	## Напев без слов (записи второго набора, моно-петли): у каждого святого свой — 01 (48 с) или 02 (глухой, 56 с),
+	## свой случайный старт и своя высота (Saint). Позиционный 3D: по нему игрок понимает, где святой.
+	"saint_chant_01": {"file": "res://audio/saint_chant_01.ogg", "bus": "Voices", "db": -9.0, "loop": true,
+		"unit": 2.0, "range": 26.0},
+	"saint_chant_02": {"file": "res://audio/saint_chant_02.ogg", "bus": "Voices", "db": -8.0, "loop": true,
+		"unit": 2.0, "range": 26.0},
+	## Ищет: быстрый монотонный речитатив обрывками; принюхивается.
+	"saint_mumble": {"file": "res://audio/saint_mumble_01.ogg", "bus": "Voices", "db": -10.0, "loop": true,
+		"unit": 1.5, "range": 18.0},
+	"saint_sniff": {"file": _SAINT_SNIFF, "bus": "Voices", "db": -10.0, "unit": 1.0, "range": 12.0, "pitch": 0.05},
+	## Погоня: низкая ровная нота под напевом; хрип-рык раз в 3–6 с (и когда схватил).
+	"saint_drone": {"file": "res://audio/saint_drone_01.ogg", "bus": "Voices", "db": -10.0, "loop": true,
+		"unit": 2.0, "range": 22.0},
+	"saint_growl": {"file": _SAINT_GROWL, "bus": "Voices", "db": -5.0, "db_rand": 2.0, "unit": 2.0, "range": 25.0,
+		"pitch": 0.05},
+	## Шаги босиком и шорох погребальной ткани (на каждом 2–3-м шаге, тихо).
+	"steps_barefoot": {"file": _STEPS_BAREFOOT, "bus": "SFX", "db": -14.0, "db_rand": 2.0, "unit": 1.2, "range": 14.0,
+		"pitch": 0.05},
+	"cloth_rustle": {"file": _CLOTH_RUSTLE, "bus": "SFX", "db": -18.0, "db_rand": 2.0, "unit": 1.0, "range": 10.0,
+		"pitch": 0.05},
+	## Первый святой бьёт камнем мёртвого: мокрые тупые удары (слышно издалека — ведёт к переулку).
+	"hit_wet": {"file": _HIT_WET, "bus": "SFX", "db": -3.0, "db_rand": 1.5, "unit": 3.0, "range": 40.0, "pitch": 0.06},
+	## Схватил: захват, борьба, дыхание героя, удушье (не из точки — это сам герой).
+	"grab": {"file": _GRAB, "bus": "SFX", "db": -3.0, "unit": 2.0, "range": 20.0, "pitch": 0.04},
+	"struggle": {"file": "res://audio/struggle_01.ogg", "bus": "SFX", "db": -6.0},
+	"breath_struggle": {"file": "res://audio/breath_struggle_01.ogg", "bus": "SFX", "db": -6.0},
+	"choke": {"file": _CHOKE, "bus": "SFX", "db": -7.0, "pitch": 0.04},
 	"whisper": {"synth": "whisper", "bus": "Voices", "db": -8.0, "variants": 3, "unit": 2.0, "range": 25.0, "pitch": 0.05},
 
 	# ─── Герой ────────────────────────────────────────────────────────────────────
@@ -169,6 +225,11 @@ const SOUNDS := {
 		"pitch": 0.06},
 	"wood_fall": {"file": _WOOD_FALL, "bus": "SFX", "db": -4.0, "db_rand": 1.5, "unit": 3.0, "range": 40.0,
 		"pitch": 0.06},
+	## Предметы с физикой (этап 5): глина качнулась / покатилась, камень упал, стук дерева.
+	## Громкость по силе удара и высоту ±5 % задаёт PhysProp.
+	"pot_wobble": {"file": _POT_WOBBLE, "bus": "SFX", "db": -4.0, "unit": 2.5, "range": 30.0},
+	"stone_drop": {"file": _STONE_DROP, "bus": "SFX", "db": -3.0, "unit": 2.5, "range": 35.0},
+	"wood_clack": {"file": _WOOD_CLACK, "bus": "SFX", "db": -5.0, "unit": 2.5, "range": 30.0},
 
 	# ─── Ложные тревоги ───────────────────────────────────────────────────────────
 	"alarm_stone_fall": {"synth": "stone_fall", "bus": "SFX", "db": -6.0, "variants": 3, "unit": 3.0, "range": 40.0, "pitch": 0.1},

@@ -1,0 +1,17 @@
+[gd_scene format=3]
+
+[ext_resource type="Script" path="res://scripts/saint.gd" id="1_saint"]
+
+[sub_resource type="CapsuleShape3D" id="CapsuleShape3D_saint"]
+radius = 0.2
+height = 1.7
+
+[node name="Saint" type="CharacterBody3D"]
+script = ExtResource("1_saint")
+
+[node name="CollisionShape3D" type="CollisionShape3D" parent="."]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0.85, 0)
+shape = SubResource("CapsuleShape3D_saint")
+
+[node name="NavigationAgent3D" type="NavigationAgent3D" parent="."]
+path_height_offset = 0.1

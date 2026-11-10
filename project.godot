@@ -25,6 +25,8 @@ GameState="*res://scripts/game_state.gd"
 ThreatDirector="*res://scripts/threat_director.gd"
 AudioManager="*res://scripts/audio_manager.gd"
 Cutscenes="*res://scripts/cutscene_player.gd"
+NoiseSystem="*res://scripts/noise_system.gd"
+Awaken="*res://scripts/awaken.gd"
 
 [display]
 
