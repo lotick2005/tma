@@ -37,6 +37,8 @@ var _after_glows := Glows.new()
 ## Источники звука, которые звучат только днём / только во тьме.
 var _day_sounds: Array[SoundEmitter] = []
 var _dark_sounds: Array[SoundEmitter] = []
+## Герой в доме с подвалом, куда сложили мёртвых (звучит слой dark_ambience).
+var _in_cellar := false
 
 @onready var _player: Player = $Player
 @onready var _geometry: Node3D = $Geometry
@@ -58,7 +60,7 @@ func _ready() -> void:
 		WorldCoords.point(D.QUARTER.x, D.QUARTER.y), _plaza_y, _wall_top)
 	_quarter.build()
 	# Предметы квартала у площади, которых днём ещё нет, — в отдельный узел «после тьмы»
-	var split := _split_aftermath(D.PROPS, D.WALL_PROPS)
+	var split := _split_aftermath(D.PROPS + _trail_props(), D.WALL_PROPS)
 	var props := QuarterProps.new(_quarter, _b, D.PROP_DENSITY, _glows)
 	props.build(D.ROOMS, split.props, split.walls)
 	_b.local = true
@@ -66,6 +68,7 @@ func _ready() -> void:
 		props.place(e[0], map_point(Vector2(e[1], e[2])), deg_to_rad(e[3]))
 	_b.local = false
 	_build_aftermath(props, split)
+	_build_dead_cellar()
 	_build_ground()
 	_build_temple_mount()
 	_build_royal_stoa()
@@ -119,15 +122,90 @@ func _build_aftermath(props: QuarterProps, split: Dictionary) -> void:
 	_after_b.local = true
 	for e in D.PLAZA_AFTERMATH:
 		props.place(e[0], map_point(Vector2(e[1], e[2])), deg_to_rad(e[3]))
-	# На местах людей толпы — то, что от них осталось
+	# На местах людей толпы — брошенное и растоптанное (сами люди убежали или их унесли)
 	for e in D.INTRO.crowd:
-		props.place(e[5], map_point(Vector2(e[0], e[1])), deg_to_rad(e[2]))
+		if e[5] != "":
+			props.place(e[5], map_point(Vector2(e[0], e[1])), deg_to_rad(e[2]))
+	# Затоптанные лежат там, где упали в панике
+	for f: Dictionary in Intro.falls(D.INTRO, self):
+		props.place(f.kind, f.at, f.yaw)
+	# То, что опрокинули: лоток на боку, кувшин вдребезги
+	for e in D.INTRO.day_props:
+		var yaw := deg_to_rad(e[4])
+		props.place(e[5], map_point(Vector2(e[2], e[3])) + Basis(Vector3.UP, yaw) * Vector3(0.0, 0.0, 0.5), yaw)
 	_after_b.local = false
 	props.set_builder(_b, _glows)
 	_after_b.commit()
 	_after_glows.commit(_aftermath)
 	_aftermath.visible = false
 	_after_b.body.process_mode = Node.PROCESS_MODE_DISABLED
+
+
+## Полосы волочения (DRAG_TRAILS) — в строки формата PROPS: кусок каждые 2,4 м вдоль ломаной, длинной осью по ходу.
+## На ступенях террас (земля в начале и в конце куска на разной высоте) кусков нет.
+func _trail_props() -> Array:
+	var out := []
+	var step := 2.4
+	var n := 0
+	for trail: Array in D.DRAG_TRAILS:
+		var pts: Array = trail[1]
+		for i in pts.size() - 1:
+			var a: Vector2 = pts[i]
+			var b: Vector2 = pts[i + 1]
+			var length := a.distance_to(b)
+			var count := maxi(1, roundi(length / step))
+			var dir := (b - a) / length
+			for k in count:
+				var mid := a + dir * (length * (k + 0.5) / count)
+				var r0 := clampi(floori(mid.y - dir.y * step * 0.5), 0, _quarter.h - 1)
+				var r1 := clampi(floori(mid.y + dir.y * step * 0.5), 0, _quarter.h - 1)
+				if not is_equal_approx(_quarter.ground[r0], _quarter.ground[r1]):
+					continue
+				n += 1
+				var c := floori(mid.x)
+				var r := floori(mid.y)
+				# Локальная −Z куска — по ходу волочения; через один — задом наперёд, чтобы рисунок не повторялся
+				var yaw := rad_to_deg(atan2(-dir.x, -dir.y)) + (180.0 if n % 2 == 0 else 0.0)
+				out.append([trail[0], c, r, yaw, mid.x - c - 0.5, mid.y - r - 0.5, 0.0, 1.0])
+	return out
+
+
+## Подвал, куда сложили мёртвых (DEAD_CELLAR): тела рядами на полу подвала, по вариантам — MultiMesh.
+func _build_dead_cellar() -> void:
+	var dc: Dictionary = D.DEAD_CELLAR
+	var kinds: Array = dc.kinds
+	var n := 0
+	_b.layer = LevelBuilder.INTERIOR_LAYER
+	for row: Array in dc.rows:
+		for i in int(row[2]):
+			var x: float = _quarter.x0 + row[0] + float(row[3]) * i
+			var z: float = _quarter.z0 + row[1]
+			var y: float = _quarter.ground[floori(row[1])] - D.QUARTER.basement_depth
+			var kind: String = kinds[n % kinds.size()]
+			n += 1
+			# Чуть неровно: клали руками
+			var yaw := deg_to_rad(row[4]) + sin(n * 12.9898) * 0.06
+			var xf := Transform3D(Basis(Vector3.UP, yaw), Vector3(x, y, z + cos(n * 78.233) * 0.05))
+			PropRegistry.add(kind, xf)
+			_b.add_instance(Corpses.mesh(kind), xf, Corpses.material(kind))
+	_b.layer = 1
+
+
+## В подвале с мёртвыми и на лестнице к нему — тёмный гул поверх фона тьмы (плавно).
+func _process(_delta: float) -> void:
+	if _quarter == null or _player == null:
+		return
+	var z: Array = D.DEAD_CELLAR.zone
+	var c := floori(_player.global_position.x - _quarter.x0)
+	var r := floori(_player.global_position.z - _quarter.z0)
+	var inside: bool = not _is_day and c >= z[0] and c <= z[2] and r >= z[1] and r <= z[3]
+	if inside == _in_cellar:
+		return
+	_in_cellar = inside
+	if inside:
+		AudioManager.set_layer("cellar", "dark_ambience", D.DEAD_CELLAR.fade_in)
+	else:
+		AudioManager.clear_layer("cellar", D.DEAD_CELLAR.fade_out)
 
 
 func show_aftermath() -> void:

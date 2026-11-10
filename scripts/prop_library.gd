@@ -82,13 +82,23 @@ const KINDS := {
 	"body_soldier": {"collide": Vector3.ZERO},
 	"body_doorway": {"collide": Vector3.ZERO},
 	"soldier_sitting": {"collide": Vector3.ZERO, "wall": true},
-	# Ужас: кровь (тёмно-бордовая, не красная), люди исчезли — пустая одежда, святые прошли — пелены и пыль
+	# Ужас: кровь (тёмно-бордовая, не красная), святые прошли — пелены и пыль
 	"blood_pool": {"collide": Vector3.ZERO},
 	"blood_drag": {"collide": Vector3.ZERO},
 	"blood_steps": {"collide": Vector3.ZERO},
 	"blood_splatter": {"collide": Vector3.ZERO, "wall": true},
-	"clothes_lying": {"collide": Vector3.ZERO},
-	"clothes_fallen": {"collide": Vector3.ZERO},
+	# Тела унесли: куски полос волочения (кладутся цепочкой, DRAG_TRAILS) — узкая и широкая
+	"blood_trail": {"collide": Vector3.ZERO, "mm": true},
+	"blood_trail_wide": {"collide": Vector3.ZERO, "mm": true},
+	# Забиты святыми: окровавленный камень и кирпич рядом с телом
+	"stone_bloody": {"collide": Vector3.ZERO},
+	"brick_bloody": {"collide": Vector3.ZERO},
+	# Сожжены ангелом: кучка пепла с вещью внутри (пряжка римского пояса), выжженный силуэт на стене
+	"ash_pile": {"collide": Vector3.ZERO},
+	"scorch_silhouette": {"collide": Vector3.ZERO, "wall": true},
+	# Рука свисает с края крыши (одноэтажный дом, парапет на 4,5 м); растоптанная корзина
+	"hand_hanging": {"collide": Vector3.ZERO, "wall": true},
+	"basket_crushed": {"collide": Vector3.ZERO, "mm": true},
 	"shroud_strip": {"collide": Vector3.ZERO},
 	"burial_dust": {"collide": Vector3.ZERO},
 	"table_overturned": {"collide": Vector3(1.1, 0.75, 0.65)},
@@ -1374,7 +1384,7 @@ static func _make_body() -> Mesh:
 	return b.commit()
 
 
-# ─── Пустая одежда ───────────────────────────────────────────────────────────
+# ─── Комья ткани и пепла, сандалии ────────────────────────────────────────────
 
 ## Смятый ком ткани: неровные кольца с разным радиусом по сторонам (складки), сверху — веер.
 static func _lump(b: PB, c: Vector3, rx: float, rz: float, h: float, tile: int, seed: int, sides: int = 8) -> void:
@@ -1408,42 +1418,128 @@ static func _sandal(b: PB, at: Vector3, yaw: float) -> void:
 	b.box(at + basis * Vector3(0, 0.04, 0.11), Vector3(0.08, 0.04, 0.012), Tile.SACK, basis)
 
 
-## Пустая одежда: человек стоял — и исчез. Туника осела кучкой, рукав вытянут, пояс сполз,
-## плащ раскинулся; сандалии стоят там, где были ноги.
-static func _make_clothes_fallen() -> Mesh:
+# ─── Тела унесли, забили, сожгли (этап 4в) ───────────────────────────────────
+
+## Одна рваная полоса вдоль Z (от +half до −half) с серединой в x0: ширина гуляет, местами рвётся.
+static func _trail_strip(b: PB, seed: int, x0: float, w0: float, half: float, y: float) -> void:
+	var rng := _rng(seed)
+	var z := half
+	var x := x0
+	var w := w0
+	while z > -half:
+		var z1 := maxf(z - rng.randf_range(0.2, 0.34), -half)
+		var x1 := clampf(x + rng.randf_range(-0.04, 0.04), x0 - 0.06, x0 + 0.06)
+		var w1 := clampf(w + rng.randf_range(-0.05, 0.04), w0 * 0.6, w0 * 1.15)
+		if rng.randf() > 0.04:
+			b.quad(Vector3(x1 - w1 * 0.5, y, z1), Vector3(x1 + w1 * 0.5, y, z1), Vector3(x + w * 0.5, y, z), Vector3(x - w * 0.5, y, z),
+				Tile.BLOOD_DARK)
+		x = x1
+		z = z1
+		w = w1
+
+
+## Кусок полосы волочения 2,6 м: одного человека тащили по плитам. Куски кладутся цепочкой (DRAG_TRAILS).
+static func _make_blood_trail() -> Mesh:
 	var b := PB.new()
-	_lump(b, Vector3(0.12, 0.0, 0.05), 0.5, 0.36, 0.06, Tile.CLOTH_BLUE, 93, 9)
-	_lump(b, Vector3(0.0, 0.0, 0.0), 0.3, 0.24, 0.2, Tile.LINEN, 94)
-	_lump(b, Vector3(-0.08, 0.1, -0.04), 0.17, 0.14, 0.13, Tile.LINEN, 95, 6)
-	# Рукав вытянут по земле
-	_limb(b, Vector3(0.18, 0.08, -0.12), Vector3(0.62, 0.04, -0.34), 0.1, Tile.LINEN)
-	_limb(b, Vector3(0.6, 0.04, -0.33), Vector3(0.74, 0.03, -0.38), 0.08, Tile.LINEN)
-	# Пояс сполз с кучки на землю
-	b.box(Vector3(-0.1, 0.17, 0.12), Vector3(0.3, 0.025, 0.05), Tile.WOOD_DARK, Basis(Vector3.UP, 0.5) * Basis(Vector3.BACK, 0.4))
-	b.box(Vector3(-0.32, 0.03, 0.2), Vector3(0.3, 0.02, 0.05), Tile.WOOD_DARK, Basis(Vector3.UP, -0.3))
-	# Сандалии — на месте ступней, носками вперёд, из-под края ткани
-	_sandal(b, Vector3(-0.1, 0.0, 0.22), 0.1)
-	_sandal(b, Vector3(0.12, 0.0, 0.24), -0.15)
+	_trail_strip(b, 141, 0.0, 0.3, 1.3, 0.012)
+	_trail_strip(b, 142, 0.17, 0.07, 1.3, 0.013)
+	_blob(b, Vector3(-0.2, 0.012, 0.5), 0.07, 0.1, Tile.BLOOD_DARK, 143, 6)
+	_blob(b, Vector3(0.25, 0.012, -0.7), 0.05, 0.08, Tile.BLOOD_DARK, 144, 6)
 	return b.commit()
 
 
-## Пустая одежда: человек лежал — и растворился. Туника складками по силуэту тела, рукав откинут,
-## пояс на месте талии, сандалии стоят у подола, где были ступни. Головы нет — пустое место.
-static func _make_clothes_lying() -> Mesh:
+## Широкая полоса волочения 2,6 м: здесь тащили многих, одного за другим.
+static func _make_blood_trail_wide() -> Mesh:
 	var b := PB.new()
-	# Туника — одно длинное пологое полотно по силуэту (+Z — к ногам), поверх — складки-заломы
-	_lump(b, Vector3(0.0, 0.0, 0.0), 0.32, 0.62, 0.06, Tile.CLOTH_RED, 96, 12)
-	_lump(b, Vector3(0.03, 0.03, -0.3), 0.2, 0.22, 0.06, Tile.CLOTH_RED, 97, 7)
-	for f in [[Vector3(-0.15, 0.06, -0.1), Vector3(0.05, 0.05, 0.35)], [Vector3(0.12, 0.06, -0.05), Vector3(0.18, 0.04, 0.45)],
-			[Vector3(-0.2, 0.05, 0.2), Vector3(-0.1, 0.04, 0.55)]]:
-		_limb(b, f[0], f[1], 0.05, Tile.CLOTH_RED)
-	# Рукава: один вдоль тела, другой откинут в сторону
-	_limb(b, Vector3(-0.27, 0.05, -0.4), Vector3(-0.3, 0.03, -0.08), 0.1, Tile.CLOTH_RED)
-	_limb(b, Vector3(0.26, 0.05, -0.42), Vector3(0.58, 0.03, -0.55), 0.1, Tile.CLOTH_RED)
-	# Пояс на талии, чуть провис
-	b.box(Vector3(0.0, 0.085, 0.12), Vector3(0.48, 0.02, 0.05), Tile.WOOD_DARK, Basis(Vector3.UP, 0.08))
-	_sandal(b, Vector3(-0.1, 0.0, 0.78), 0.05)
-	_sandal(b, Vector3(0.13, 0.0, 0.8), -0.12)
+	_trail_strip(b, 145, -0.3, 0.32, 1.3, 0.012)
+	_trail_strip(b, 146, 0.08, 0.36, 1.3, 0.013)
+	_trail_strip(b, 147, 0.42, 0.22, 1.3, 0.012)
+	_trail_strip(b, 148, -0.56, 0.06, 1.3, 0.013)
+	_blob(b, Vector3(0.08, 0.014, 0.2), 0.11, 0.4, Tile.BLOOD_BLACK, 149, 8)
+	_blob(b, Vector3(-0.62, 0.012, -0.5), 0.06, 0.1, Tile.BLOOD_DARK, 150, 6)
+	return b.commit()
+
+
+## Окровавленный камень с кулак-два: им били. Тёмное пятно под ним и на нём.
+static func _make_stone_bloody() -> Mesh:
+	var b := PB.new()
+	_blob(b, Vector3(0.02, 0.011, 0.0), 0.2, 0.16, Tile.BLOOD_DARK, 151, 8)
+	_lump(b, Vector3(0, 0, 0), 0.11, 0.09, 0.12, Tile.STONE, 152, 6)
+	_lump(b, Vector3(0.02, 0.07, 0.01), 0.075, 0.06, 0.06, Tile.BLOOD_DARK, 153, 5)
+	return b.commit()
+
+
+## Окровавленный обожжённый кирпич: лежит углом, один конец тёмный.
+static func _make_brick_bloody() -> Mesh:
+	var b := PB.new()
+	var rot := Basis(Vector3.UP, 0.4) * Basis(Vector3.RIGHT, 0.12)
+	_blob(b, Vector3(0.05, 0.011, 0.02), 0.17, 0.12, Tile.BLOOD_DARK, 154, 7)
+	b.box(Vector3(0, 0.045, 0), Vector3(0.12, 0.075, 0.24), Tile.CLAY_DARK, rot)
+	b.box(rot * Vector3(0, 0.0, -0.085) + Vector3(0, 0.047, 0), Vector3(0.124, 0.079, 0.08), Tile.BLOOD_DARK, rot)
+	return b.commit()
+
+
+## Кучка серого пепла — всё, что осталось от человека; в пепле — пряжка римского пояса и обрывок ремня.
+static func _make_ash_pile() -> Mesh:
+	var b := PB.new()
+	_blob(b, Vector3(0, 0.011, 0), 0.62, 0.5, Tile.DUST, 155, 11)
+	_blob(b, Vector3(0.05, 0.013, -0.05), 0.4, 0.3, Tile.SOOT, 156, 9)
+	_lump(b, Vector3(0, 0, 0), 0.36, 0.3, 0.15, Tile.DUST, 157, 9)
+	_lump(b, Vector3(0.08, 0.05, 0.04), 0.18, 0.15, 0.12, Tile.SOOT, 158, 6)
+	# Ремень торчит из пепла, на конце — бронзовая пряжка-рамка
+	b.box(Vector3(-0.24, 0.07, 0.16), Vector3(0.3, 0.012, 0.045), Tile.WOOD_DARK, Basis(Vector3.UP, 0.5) * Basis(Vector3.BACK, 0.25))
+	var at := Vector3(-0.4, 0.035, 0.25)
+	var rot := Basis(Vector3.UP, 0.5) * Basis(Vector3.BACK, 0.15)
+	for e in [[Vector3(0, 0, -0.03), Vector3(0.075, 0.012, 0.014)], [Vector3(0, 0, 0.03), Vector3(0.075, 0.012, 0.014)],
+			[Vector3(-0.031, 0, 0), Vector3(0.014, 0.012, 0.06)], [Vector3(0.031, 0, 0), Vector3(0.014, 0.012, 0.06)],
+			[Vector3(0.0, 0.004, 0), Vector3(0.07, 0.006, 0.008)]]:
+		b.box(at + rot * (e[0] as Vector3), e[1], Tile.METAL, rot)
+	return b.commit()
+
+
+## Выжженный силуэт на стене (точка у стены, смотрит в −Z): тёмная тень человека, который закрывал лицо руками, —
+## как тень, выжженная светом. Ниже — копоть до земли.
+static func _make_scorch_silhouette() -> Mesh:
+	var b := PB.new()
+	b.xf = Transform3D(Basis(Vector3.UP, PI), Vector3.ZERO)
+	var z := 0.006
+	_blob_v(b, Vector2(0.0, 1.52), 0.115, 0.13, z, Tile.SOOT, 160, 8)
+	_blob_v(b, Vector2(0.0, 1.08), 0.23, 0.36, z, Tile.SOOT, 161, 10)
+	_blob_v(b, Vector2(-0.1, 0.42), 0.1, 0.44, z, Tile.SOOT, 162, 8)
+	_blob_v(b, Vector2(0.11, 0.4), 0.1, 0.42, z, Tile.SOOT, 163, 8)
+	# Руки подняты к лицу
+	_blob_v(b, Vector2(-0.24, 1.36), 0.075, 0.2, z, Tile.SOOT, 164, 7)
+	_blob_v(b, Vector2(-0.14, 1.6), 0.07, 0.12, z, Tile.SOOT, 165, 6)
+	_blob_v(b, Vector2(0.25, 1.38), 0.075, 0.2, z, Tile.SOOT, 166, 7)
+	_blob_v(b, Vector2(0.15, 1.62), 0.07, 0.12, z, Tile.SOOT, 167, 6)
+	return b.commit()
+
+
+## Рука свисает с края плоской крыши одноэтажного дома (парапет на 4,5 м): тот, кто успел залезть, лежит наверху.
+static func _make_hand_hanging() -> Mesh:
+	var b := PB.new()
+	var top := 4.52
+	_limb(b, Vector3(0.0, top + 0.02, 0.3), Vector3(0.02, top, -0.07), 0.11, Tile.LINEN)
+	_limb(b, Vector3(0.02, top, -0.08), Vector3(0.04, top - 0.3, -0.13), 0.08, Tile.SKIN)
+	_limb(b, Vector3(0.04, top - 0.3, -0.13), Vector3(0.03, top - 0.55, -0.12), 0.07, Tile.SKIN)
+	_ball(b, Vector3(0.03, top - 0.62, -0.12), 0.05, Tile.SKIN)
+	# Потёк по стене под рукой
+	b.xf = Transform3D(Basis(Vector3.UP, PI), Vector3.ZERO)
+	b.quad(Vector3(-0.045, top - 0.9, 0.007), Vector3(-0.02, top - 0.9, 0.007), Vector3(-0.028, top - 1.7, 0.007),
+		Vector3(-0.04, top - 1.7, 0.007), Tile.BLOOD_DARK)
+	return b.commit()
+
+
+## Растоптанная корзина: сплющена, прутья разошлись.
+static func _make_basket_crushed() -> Mesh:
+	var b := PB.new()
+	b.lathe([Vector2(0, 0), Vector2(0.2, 0), Vector2(0.27, 0.05), Vector2(0.25, 0.075), Vector2(0.14, 0.05), Vector2(0, 0.04)],
+		8, Tile.STRAW, Vector3.ZERO, Basis(Vector3.UP, 0.4), Vector2(1.25, 0.85))
+	var rng := _rng(170)
+	for i in 5:
+		var a := rng.randf() * TAU
+		var c := Vector3(cos(a), 0, sin(a)) * rng.randf_range(0.28, 0.42)
+		b.box(c + Vector3.UP * 0.008, Vector3(0.012, 0.008, rng.randf_range(0.14, 0.24)), Tile.STRAW, Basis(Vector3.UP, rng.randf() * TAU))
 	return b.commit()
 
 

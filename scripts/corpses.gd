@@ -13,6 +13,13 @@ const KINDS := {
 	"corpse_collapsed": ["townsman", "walk_collapse", -1.0, false, Vector2(0.0, 0.0), "шёл и упал"],
 	"corpse_soldier": ["hero", "walk_collapse", -1.0, false, Vector2(0.0, 0.0), "солдат гарнизона (та же туника, что у героя)"],
 	"corpse_lying": ["townsman", "lying_pose", -1.0, false, Vector2(0.0, 0.0), "лежит на спине"],
+	"corpse_curled": ["townsman", "dying", 2.2, false, Vector2(0.0, 0.0), "свернулся у порога"],
+	"corpse_beaten": ["townsman", "dying", 4.6, false, Vector2(0.0, 0.0), "забит камнем (жертва первого святого)"],
+	"corpse_mother": ["townswoman", "walk_collapse", -1.0, false, Vector2(0.0, 0.0), "мать: упала на бегу"],
+	# Сложенные в подвале: лежат ровно, рядами
+	"corpse_laid": ["townsman", "lying_idle", 0.0, false, Vector2(0.0, 0.0), "сложен в подвале"],
+	"corpse_laid_f": ["townswoman", "lying_idle", 1.6, false, Vector2(0.0, 0.0), "сложена в подвале"],
+	"corpse_laid_soldier": ["hero", "lying_pose", -1.0, false, Vector2(0.0, 0.0), "солдат, сложен в подвале"],
 	"corpse_ash": ["hero", "lying_pose", -1.0, true, Vector2(0.0, 0.0), "сожжён ангелом: серый пепел"],
 	"corpse_ash_f": ["townswoman", "dying", 0.0, true, Vector2(0.0, 0.0), "сожжена ангелом"],
 	"corpse_ash_kneel": ["townsman", "pray_kneel", 0.0, true, Vector2(0.0, 0.0), "сгорел на коленях"],

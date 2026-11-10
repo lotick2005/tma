@@ -249,6 +249,11 @@ func set_lamp(out: bool, instant := false) -> void:
 		_arms.set_lamp_out(out, instant)
 
 
+## Спрятать своё тело целиком (катсцена: камера «из глаз» лежит на мостовой, а тело стоит) / вернуть.
+func set_body_visible(on: bool) -> void:
+	_body.visible = on
+
+
 func set_head_visible(on: bool) -> void:
 	_body.set_head_visible(on or (_orbit != null and _orbit.current))
 
