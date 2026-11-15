@@ -6,7 +6,10 @@ extends Node
 ##    толчок по скорости героя (шагом — качнулся, бегом — опрокинулся).
 ##  • E — взять предмет в левую руку (правая со светильником): черепков до 3, камень или малый кувшин — по одному.
 ##  • ЛКМ — бросить по дуге левой рукой (анимация throw_left на костях левой руки). Чем дольше держишь — тем дальше.
-## Предмет в руке — только картинка у кисти (тело с физикой появляется в момент броска, не в стене).
+##    Пока зажата — пунктир дуги и метка места падения: та же формула, что у броска (_throw_start + _trace),
+##    до первой стены или пола.
+## Предмет в руке — только картинка в кисти (тело с физикой появляется в момент броска, не в стене): кувшин держат
+## за горло, камень и черепки лежат в ладони (hero_arms.gd, left_grip). Освещается как всё вокруг.
 
 const S := preload("res://data/stealth.gd")
 
@@ -39,6 +42,9 @@ var _touching := {}
 var _held_meshes: Array[MeshInstance3D] = []
 var _query := PhysicsShapeQueryParameters3D.new()
 var _shape := CapsuleShape3D.new()
+## Дуга броска: точки пунктира (один MultiMesh) и метка места падения.
+var _arc: MultiMeshInstance3D
+var _mark: MeshInstance3D
 
 
 func _ready() -> void:
@@ -49,6 +55,7 @@ func _ready() -> void:
 	_shape.height = 1.2
 	_query.shape = _shape
 	_query.collision_mask = 1 << (PhysProp.LAYER - 1)
+	_build_arc()
 
 
 func _unhandled_input(event: InputEvent) -> void:
@@ -139,6 +146,7 @@ func _update_held() -> void:
 	for m in _held_meshes:
 		m.queue_free()
 	_held_meshes.clear()
+	_arms.set_left_items([])
 	if held_count <= 0:
 		held_kind = ""
 		_arms.set_left_holding(false)
@@ -147,13 +155,18 @@ func _update_held() -> void:
 	for i in held_count:
 		var mi := MeshInstance3D.new()
 		mi.mesh = PropLibrary.mesh(info.mesh)
+		# Обычный слой: свой светильник и свет вокруг освещают предмет так же, как всё остальное
 		mi.material_override = PropLibrary.material()
-		mi.layers = 1 << (Player.VIEW_LAYER - 1)
 		mi.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
 		_player.add_child(mi)
 		mi.top_level = true
 		_held_meshes.append(mi)
-	_arms.set_left_holding(true)
+	_arms.set_left_items(_held_meshes)
+	if info.has("neck"):
+		var n: Array = info.neck
+		_arms.set_left_holding(true, "neck", 0.0, Vector2(n[0], n[1]))
+	else:
+		_arms.set_left_holding(true, "palm", (info.size as Array)[1])
 
 
 # ─── Бросить ─────────────────────────────────────────────────────────────────
@@ -193,43 +206,150 @@ func _process(delta: float) -> void:
 		Throw.NONE:
 			_w = move_toward(_w, 0.0, delta / 0.25)
 	_arms.set_arm_anim(THROW_ANIM, _t, _w, "Left")
-	_place_held()
+	_update_arc()
 
 
-## Предмет в руке — у кисти (картинка; черепки — стопкой).
-func _place_held() -> void:
-	if _held_meshes.is_empty():
-		return
-	var grip: Transform3D = _arms.left_grip()
-	for i in _held_meshes.size():
-		_held_meshes[i].global_transform = grip * Transform3D(Basis(Vector3.UP, i * 0.9), Vector3(0.0, i * 0.02, 0.0))
-
-
-## Отпустил: тело с физикой появляется у кисти (если кисть за стеной — перед стеной) и летит по дуге.
-func _launch() -> void:
-	if held_count <= 0 or props == null:
-		return
-	var cam := _player.eye_camera()
-	var fwd := -cam.global_basis.z
-	var from := cam.global_position
-	var at: Vector3 = _arms.left_grip().origin
-	var q := PhysicsRayQueryParameters3D.create(from, at + fwd * 0.15, 1)
+## Откуда и с какой скоростью предмет полетит, если отпустить сейчас: [точка, скорость].
+## Точка — слева внизу от глаз, где рука (если там стена — перед стеной); скорость — по взгляду, чуть вверх.
+func _throw_start() -> Array:
+	var eye := _player.eye_camera().global_position
+	var look := _player.eye_basis()
+	var fwd := -look.z
+	var at := eye + look * S.THROW_ORIGIN
+	var q := PhysicsRayQueryParameters3D.create(eye, at + (at - eye).normalized() * 0.15, 1)
 	var hit := _player.get_world_3d().direct_space_state.intersect_ray(q)
 	if not hit.is_empty():
-		at = from + (hit.position - from) * 0.6
+		at = eye + (hit.position - eye) * 0.6
 	var k := clampf(_charge / S.THROW_HOLD_FULL, 0.0, 1.0)
 	var speed := lerpf(S.THROW_SPEED_MIN, S.THROW_SPEED_MAX, k)
 	var vel := (fwd + Vector3.UP * S.THROW_LIFT).normalized() * speed + _player.velocity * 0.5
+	return [at, vel]
+
+
+## Полёт предмета шагами физики (как считает движок: затухание, тяжесть, сдвиг) до первой стены или пола.
+## Возвращает {"points": точки пути, "hit": попал ли, "pos": куда, "normal": нормаль там}.
+func _trace(at: Vector3, vel: Vector3) -> Dictionary:
+	var space := _player.get_world_3d().direct_space_state
+	var dt := 1.0 / Engine.physics_ticks_per_second
+	var g := Vector3.DOWN * float(ProjectSettings.get_setting("physics/3d/default_gravity"))
+	var q := PhysicsRayQueryParameters3D.new()
+	q.collision_mask = 1
+	var pts := PackedVector3Array([at])
+	var p := at
+	var v := vel
+	for i in ceili(S.ARC_MAX_TIME / dt):
+		v = v * (1.0 - S.THROW_DAMP * dt) + g * dt
+		var np := p + v * dt
+		q.from = p
+		q.to = np
+		var hit := space.intersect_ray(q)
+		if not hit.is_empty():
+			pts.append(hit.position)
+			return {"points": pts, "hit": true, "pos": hit.position, "normal": hit.normal}
+		pts.append(np)
+		p = np
+	return {"points": pts, "hit": false, "pos": p, "normal": Vector3.UP}
+
+
+## Отпустил: тело с физикой появляется в точке броска и летит по той же дуге, что была нарисована.
+func _launch() -> void:
+	if held_count <= 0 or props == null:
+		return
+	var start := _throw_start()
+	var at: Vector3 = start[0]
 	held_count -= 1
 	var kind := held_kind
 	var p := props.spawn(kind, at, randf() * TAU, false)
 	if p:
 		var info: Dictionary = S.KINDS[kind]
-		if info.shape != "lump":
-			# Кувшин в руке держат за середину: тело ставится низом в точку — опустить на полвысоты
-			p.global_position -= Vector3.UP * (info.size as Array)[1] * 0.5
-		p.launch(vel, Vector3(randf_range(-6, 6), randf_range(-6, 6), randf_range(-6, 6)))
+		# Точка тела — в точке броска: у «комка» spawn поднимает середину над точкой, у кувшина точка — дно
+		var lift: float = (info.size as Array)[1] * 0.5
+		p.global_position -= Vector3.UP * lift
+		p.launch(start[1], Vector3(randf_range(-6, 6), randf_range(-6, 6), randf_range(-6, 6)))
 	_update_held()
+
+
+# ─── Дуга броска ─────────────────────────────────────────────────────────────
+
+func _build_arc() -> void:
+	var mat := StandardMaterial3D.new()
+	mat.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED
+	mat.albedo_color = S.ARC_COLOR
+	mat.billboard_mode = BaseMaterial3D.BILLBOARD_ENABLED
+	# Точка одного размера на экране, как бы далеко ни была
+	mat.fixed_size = true
+	mat.disable_fog = true
+	var quad := QuadMesh.new()
+	quad.size = Vector2.ONE * S.ARC_DOT_SIZE
+	quad.material = mat
+	var mm := MultiMesh.new()
+	mm.transform_format = MultiMesh.TRANSFORM_3D
+	mm.mesh = quad
+	mm.instance_count = ceili(S.THROW_SPEED_MAX * S.ARC_MAX_TIME / S.ARC_DOT_STEP) + 2
+	mm.visible_instance_count = 0
+	_arc = MultiMeshInstance3D.new()
+	_arc.name = "ThrowArc"
+	_arc.multimesh = mm
+	_arc.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
+	# Точки по всему пути — не отсекать по коробке одного меша
+	_arc.custom_aabb = AABB(Vector3.ONE * -60.0, Vector3.ONE * 120.0)
+	_arc.visible = false
+	add_child(_arc)
+	# Метка места падения — кольцо на поверхности
+	var ring := SurfaceTool.new()
+	ring.begin(Mesh.PRIMITIVE_TRIANGLES)
+	var n := 10
+	for i in n:
+		var a0 := TAU * i / n
+		var a1 := TAU * (i + 1) / n
+		var o0 := Vector3(cos(a0), 0.0, sin(a0))
+		var o1 := Vector3(cos(a1), 0.0, sin(a1))
+		for v: Vector3 in [o0, o1, o1 * 0.72, o0, o1 * 0.72, o0 * 0.72]:
+			ring.add_vertex(v * S.ARC_MARK_RADIUS)
+	var ring_mat := StandardMaterial3D.new()
+	ring_mat.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED
+	ring_mat.albedo_color = S.ARC_COLOR
+	ring_mat.cull_mode = BaseMaterial3D.CULL_DISABLED
+	ring_mat.disable_fog = true
+	_mark = MeshInstance3D.new()
+	_mark.name = "ThrowMark"
+	_mark.mesh = ring.commit()
+	_mark.material_override = ring_mat
+	_mark.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
+	_mark.top_level = true
+	_mark.visible = false
+	add_child(_mark)
+
+
+## Пока зажата ЛКМ (и до самого вылета) — пунктир от руки до места падения и кольцо там.
+func _update_arc() -> void:
+	var on := held_count > 0 and (_throw == Throw.CHARGE or (_throw == Throw.RELEASE and not _released))
+	_arc.visible = on
+	_mark.visible = on
+	if not on:
+		return
+	var start := _throw_start()
+	var tr := _trace(start[0], start[1])
+	var pts: PackedVector3Array = tr.points
+	var mm := _arc.multimesh
+	var count := 0
+	var next := S.ARC_DOT_FROM
+	var run := 0.0
+	for i in range(1, pts.size()):
+		var seg := pts[i] - pts[i - 1]
+		var l := seg.length()
+		while next <= run + l and count < mm.instance_count:
+			mm.set_instance_transform(count, Transform3D(Basis(), pts[i - 1] + seg * ((next - run) / maxf(l, 1e-5))))
+			count += 1
+			next += S.ARC_DOT_STEP
+		run += l
+	mm.visible_instance_count = count
+	_arc.global_transform = Transform3D()
+	_mark.visible = tr.hit
+	if tr.hit:
+		var nrm: Vector3 = tr.normal
+		var side := nrm.cross(Vector3.RIGHT if absf(nrm.x) < 0.9 else Vector3.FORWARD).normalized()
+		_mark.global_transform = Transform3D(Basis(side, nrm, side.cross(nrm)), tr.pos + nrm * 0.03)
 
 
 ## Отдать всё из руки (поймали — уронил).

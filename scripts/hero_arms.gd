@@ -12,7 +12,8 @@ extends Node3D
 ## кисть заходит в кадр снизу слева); у стены прижимается к телу.
 ## Сам IK — модификатор скелета (_ArmIK): он работает после анимации и после позвоночника (hero_body.gd).
 ## Старые руки — hero_arms_proc.gd.
-## Этап 5: левая держит взятый предмет перед собой слева (set_left_holding), бросает — кости левой руки
+## Этап 5: левая держит взятый предмет слева внизу в кадре, зеркально светильнику (set_left_holding: камень и
+## черепок — в ладони, кувшин — за горло; предмет жёстко сидит в кисти — left_grip), бросает — кости левой руки
 ## берутся из анимации throw_left (set_arm_anim, время ведёт HeroHands); схватили — обе руки перед лицом
 ## (set_struggle: поза hold_off + IK к точкам перед камерой с дрожью).
 
@@ -36,6 +37,11 @@ signal lamp_changed(out: bool)
 @export var lamp_offset_run := Vector3(0.22, 0.4, -0.36)
 ## В приседе.
 @export var lamp_offset_crouch := Vector3(0.24, 0.02, -0.5)
+## Взгляд в пол: светильник ближе к телу и ниже — остаётся в кадре целиком (доля — по наклону взгляда,
+## от look_down_from до look_down_full, град).
+@export var lamp_offset_down := Vector3(0.17, 0.0, -0.3)
+@export var look_down_from := 25.0
+@export var look_down_full := 65.0
 ## Стена перед лицом — к груди.
 @export var lamp_offset_wall := Vector3(0.1, 0.1, -0.19)
 ## Носик повёрнут влево от «вперёд», град.
@@ -59,8 +65,21 @@ signal lamp_changed(out: bool)
 
 ## Левая кисть у стены: от груди (кость UpperChest) в осях тела, м.
 const LEFT_PRESSED := Vector3(-0.13, -0.33, -0.16)
-## Левая держит предмет: кисть от груди (в осях тела) — перед собой, левее, ниже груди.
-@export var left_hold_offset := Vector3(-0.17, 0.24, -0.42)
+@export_group("Предмет в левой")
+## Левая держит предмет: кисть от груди (в осях груди, как светильник) — зеркально светильнику, чуть ниже.
+@export var left_hold_offset := Vector3(-0.23, 0.18, -0.42)
+## На бегу, в приседе, глядя в пол, у стены.
+@export var left_hold_offset_run := Vector3(-0.24, 0.34, -0.36)
+@export var left_hold_offset_crouch := Vector3(-0.24, -0.02, -0.48)
+@export var left_hold_offset_down := Vector3(-0.24, -0.04, -0.3)
+@export var left_hold_offset_wall := Vector3(-0.16, 0.05, -0.2)
+## Кисть догоняет своё место с такой жёсткостью, 1/с (качается с телом без рывков).
+@export var left_hold_smooth := 16.0
+## Сгиб пальцев, град: в ладони (камень, черепок) и вокруг горла кувшина.
+@export var left_curl_palm := 20.0
+@export var left_curl_neck := 70.0
+
+@export_group("")
 ## Схватили: кисти перед камерой (в осях камеры), м.
 @export var struggle_left := Vector3(-0.13, -0.1, -0.32)
 @export var struggle_right := Vector3(0.13, -0.12, -0.3)
@@ -87,6 +106,17 @@ var _lamp_ready := false
 var _forearm := Vector3.FORWARD
 var _hold := 0.0
 var _hold_target := 0.0
+## Как держит: "palm" — в ладони, "neck" — за горло (тогда _hold_neck = [высота горла, радиус], _hold_h — толщина предмета).
+var _hold_grip := "palm"
+var _hold_neck := Vector2(0.3, 0.05)
+var _hold_h := 0.05
+var _left_geo: Basis
+## Предмет относительно кости левой кисти (жёстко в кисти — и в замахе, и в броске).
+var _left_item := Transform3D()
+var _left_grip := Transform3D()
+var _left_nodes: Array = []
+var _hold_pos := Vector3.ZERO
+var _hold_ready := false
 ## Анимация поверх костей руки: [имя, время, вес, сторона ("Left" / "Right" / "Both")].
 var _arm_anim := ["", 0.0, 0.0, "Left"]
 var _anim_tracks := {}
@@ -126,6 +156,10 @@ func _ready() -> void:
 	var fingers_l := skel.get_bone_rest(_bones["RightIndexProximal"]).origin.normalized()
 	var palm_l := skel.get_bone_global_rest(hand).basis.inverse() * Vector3.RIGHT
 	_hand_geo = _frame(fingers_l, palm_l)
+	# Левая — зеркально: ладонь в позе покоя смотрит к бедру (−X)
+	var lhand := _bones["LeftHand"] as int
+	_left_geo = _frame(skel.get_bone_rest(_bones["LeftIndexProximal"]).origin.normalized(),
+		skel.get_bone_global_rest(lhand).basis.inverse() * Vector3.LEFT)
 	_ik = _ArmIK.new()
 	_ik.name = "ArmIK"
 	_ik.arms = self
@@ -155,9 +189,14 @@ func set_lamp_out(out: bool, instant: bool = false) -> void:
 	lamp_changed.emit(out)
 
 
-## Левая держит предмет перед собой (HeroHands).
-func set_left_holding(on: bool) -> void:
+## Левая держит предмет (HeroHands). grip: "palm" — лежит в ладони (thickness — его толщина, м),
+## "neck" — кувшин за горло (neck — [высота горла над дном, радиус горла], м).
+func set_left_holding(on: bool, grip := "palm", thickness := 0.05, neck := Vector2(0.3, 0.05)) -> void:
 	_hold_target = 1.0 if on else 0.0
+	if on:
+		_hold_grip = grip
+		_hold_h = thickness
+		_hold_neck = neck
 
 
 ## Кости руки side ("Left", "Right", "Both") — из анимации anim_name в момент time с весом weight (0 — выкл).
@@ -170,17 +209,16 @@ func set_struggle(on: bool) -> void:
 	_struggle_target = 1.0 if on else 0.0
 
 
-## Где в левой кисти лежит предмет (в мире): между запястьем и пальцами, ладонью вверх.
+## Где предмет в левой кисти (в мире): жёстко в кисти, как его взяли (ладонь снизу или кулак на горле).
+## Считается в проходе IK (_apply): вне его кости стоят в позе анимации, без IK.
 func left_grip() -> Transform3D:
-	var skel := _body.skeleton
-	var h := skel.get_bone_global_pose(_bones["LeftHand"])
-	var f := skel.get_bone_global_pose(_bones["LeftIndexProximal"])
-	var at := h.origin.lerp(f.origin, 0.75)
-	var fingers := (f.origin - h.origin).normalized()
-	var up := (skel.global_basis.inverse() * Vector3.UP)
-	var side := fingers.cross(up).normalized()
-	var b := Basis(side, up - fingers * up.dot(fingers), -fingers).orthonormalized()
-	return skel.global_transform * Transform3D(b, at - b.y * 0.02)
+	return _left_grip
+
+
+## Картинки предмета в левой руке (HeroHands): ставятся в кисть в том же проходе IK, без отставания на кадр.
+## Несколько (черепки) — стопкой.
+func set_left_items(nodes: Array) -> void:
+	_left_nodes = nodes
 
 
 func _process(delta: float) -> void:
@@ -224,7 +262,10 @@ func _apply(delta: float) -> void:
 			spine_twist += t
 		var level := Basis(up, _body.twist * spine_twist) * body_basis
 		frame = Basis(frame.get_rotation_quaternion().slerp(level.get_rotation_quaternion(), crouch_w))
-	var offset := lamp_offset.lerp(lamp_offset_run, _run).lerp(lamp_offset_crouch, crouch_w).lerp(lamp_offset_wall, _pull)
+	# Взгляд в пол: светильник и предмет в левой — ближе к телу и ниже, чтобы оставались в кадре
+	var down := smoothstep(deg_to_rad(look_down_from), deg_to_rad(look_down_full), -_player.get_pitch())
+	var offset := lamp_offset.lerp(lamp_offset_run, _run).lerp(lamp_offset_crouch, crouch_w) \
+		.lerp(lamp_offset_down, down).lerp(lamp_offset_wall, _pull)
 	var target_world := skel.global_transform * (chest.origin + frame * offset)
 	var target := _player.to_local(target_world)
 	if not _lamp_ready:
@@ -278,14 +319,44 @@ func _apply(delta: float) -> void:
 		var left := Transform3D(Basis(), uc + body_basis * LEFT_PRESSED)
 		_solve_arm("Left", left, body_basis * Vector3(-0.6, -1.0, 0.4), true, _pull)
 
-	# Левая держит предмет: перед собой, левее, у стены — ближе к телу
+	# Левая держит предмет: слева внизу в кадре, зеркально светильнику (от груди, в тех же осях)
 	var throw_w: float = _arm_anim[2] if _arm_anim[0] != "" else 0.0
 	var hold_w := _hold * (1.0 - throw_w) * (1.0 - _struggle)
-	if hold_w > 0.001:
-		var ho := left_hold_offset.lerp(Vector3(-0.15, 0.05, -0.22), _pull)
-		var hp := chest.origin + body_basis * ho
-		var lb := skel.get_bone_global_pose(_bones["LeftHand"]).basis
-		_solve_arm("Left", Transform3D(lb, hp), body_basis * Vector3(-0.8, -1.0, 0.3), true, hold_w)
+	if _hold > 0.001:
+		var ho := left_hold_offset.lerp(left_hold_offset_run, _run).lerp(left_hold_offset_crouch, crouch_w) \
+			.lerp(left_hold_offset_down, down).lerp(left_hold_offset_wall, _pull)
+		var hp_local := _player.to_local(skel.global_transform * (chest.origin + frame * ho))
+		if not _hold_ready:
+			_hold_pos = hp_local
+			_hold_ready = true
+		_hold_pos = _hold_pos.lerp(hp_local, 1.0 - exp(-left_hold_smooth * delta))
+		var hp := to_skel * _player.to_global(_hold_pos)
+		# Оси «ровно»: вверх — мировой верх, вперёд — куда смотрит грудь (по горизонтали)
+		var up_s := (to_skel.basis * Vector3.UP).normalized()
+		var fwd_s := frame * Vector3.FORWARD
+		fwd_s = (fwd_s - up_s * fwd_s.dot(up_s)).normalized()
+		var right_s := fwd_s.cross(up_s)
+		var level := Basis(right_s, up_s, -fwd_s)
+		var fingers: Vector3
+		var palm: Vector3
+		var item: Vector3
+		if _hold_grip == "neck":
+			# Кулак на горле: ладонь смотрит внутрь (вправо), пальцы — вперёд и чуть вверх, кувшин висит ровно
+			fingers = (fwd_s + right_s * 0.25 + up_s * 0.3).normalized()
+			palm = (right_s - fwd_s * 0.2 + up_s * 0.1).normalized()
+			item = hp + fingers * palm_forward * 0.9 + palm * (_hold_neck.y + 0.012) - up_s * _hold_neck.x
+		else:
+			# В ладони: ладонь вверх, пальцы вперёд и чуть внутрь
+			fingers = (fwd_s + right_s * 0.35).normalized()
+			palm = up_s
+			item = hp + fingers * palm_forward + palm * (palm_up + _hold_h * 0.5)
+		var hand_b := _frame(fingers, palm) * _left_geo.inverse()
+		_left_item = Transform3D(hand_b, hp).affine_inverse() * Transform3D(level, item)
+		if hold_w > 0.001:
+			_solve_arm("Left", Transform3D(hand_b, hp), body_basis * Vector3(-0.8, -1.0, 0.35), false, hold_w)
+		_curl("Left", (left_curl_neck if _hold_grip == "neck" else left_curl_palm) * _hold)
+	else:
+		_hold_ready = false
 
 	# Бросок: кости руки — из анимации (кадр ведёт HeroHands)
 	if throw_w > 0.001:
@@ -302,6 +373,13 @@ func _apply(delta: float) -> void:
 		var rhb := skel.get_bone_global_pose(_bones["RightHand"]).basis
 		_solve_arm("Left", Transform3D(lhb, lt), body_basis * Vector3(-0.8, -1.0, 0.2), true, _struggle)
 		_solve_arm("Right", Transform3D(rhb, rt), body_basis * Vector3(0.8, -1.0, 0.2), true, _struggle)
+
+	# Предмет — в настоящей левой кисти (и в замахе, и в броске)
+	_left_grip = skel.global_transform * skel.get_bone_global_pose(_bones["LeftHand"]) * _left_item
+	for i in _left_nodes.size():
+		var n: Node3D = _left_nodes[i]
+		if is_instance_valid(n):
+			n.global_transform = _left_grip * Transform3D(Basis(Vector3.UP, i * 0.9), Vector3(0.0, i * 0.02, 0.0))
 
 	# Светильник лежит в настоящей кисти, даже если рука не дотянулась
 	var hand := skel.get_bone_global_pose(_bones["RightHand"])
