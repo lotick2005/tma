@@ -42,6 +42,7 @@ const HIT_COOLDOWN := 0.35
 ## max_radius — самый громкий удар, м; break_speed — глина бьётся при такой скорости удара (0 — не бьётся);
 ## break_radius — шум, когда разбилась, м; shards — сколько черепков (от–до);
 ## pick — можно взять в левую руку (сколько в руке: черепков до 3, остального по одному);
+## neck — кувшин в руке держат за горло: [высота горла над дном, радиус горла], м (без него — лежит в ладони);
 ## bump — во сколько раз сильнее его толкает герой (большой кувшин высокий и шаткий: бегом опрокидывается).
 const KINDS := {
 	"shard_piece": {"mesh": "shard_piece", "mass": 0.15, "material": "clay", "shape": "lump", "size": [0.13, 0.03, 0.1],
@@ -49,9 +50,9 @@ const KINDS := {
 	"stone_throw": {"mesh": "stone_throw", "mass": 0.8, "material": "stone", "shape": "lump", "size": [0.13, 0.1, 0.12],
 		"max_radius": 8.0, "break_speed": 0.0, "pick": 1},
 	"jar_small": {"mesh": "jar_small", "mass": 1.2, "material": "clay", "shape": "cyl", "size": [0.12, 0.37],
-		"max_radius": 6.0, "break_speed": 3.2, "break_radius": 14.0, "shards": [2, 3], "pick": 1},
+		"max_radius": 6.0, "break_speed": 3.2, "break_radius": 14.0, "shards": [2, 3], "pick": 1, "neck": [0.33, 0.05]},
 	"jug": {"mesh": "jug", "mass": 1.0, "material": "clay", "shape": "cyl", "size": [0.1, 0.32],
-		"max_radius": 6.0, "break_speed": 3.2, "break_radius": 14.0, "shards": [2, 3], "pick": 1},
+		"max_radius": 6.0, "break_speed": 3.2, "break_radius": 14.0, "shards": [2, 3], "pick": 1, "neck": [0.27, 0.045]},
 	"jar_large": {"mesh": "jar_large", "mass": 9.0, "material": "clay", "shape": "cyl", "size": [0.24, 0.8],
 		"max_radius": 8.0, "break_speed": 2.4, "break_radius": 16.0, "shards": [3, 4], "pick": 0, "bump": 1.7},
 	"stool": {"mesh": "stool", "mass": 2.5, "material": "wood", "shape": "box", "size": [0.36, 0.45, 0.3],
@@ -76,11 +77,24 @@ const BUMP_COOLDOWN := 0.5
 const BUMP_REACH := 0.08
 
 ## ─── Бросок ─────────────────────────────────────────────────────────────────
-## Скорость броска, м/с: быстро щёлкнул ЛКМ — min, держал hold_full с и дольше — max. Дуга — чуть вверх (THROW_LIFT).
-const THROW_SPEED_MIN := 5.0
-const THROW_SPEED_MAX := 10.0
-const THROW_HOLD_FULL := 0.8
+## Скорость броска, м/с: быстро щёлкнул ЛКМ — min (падает в ~3 м), держал THROW_HOLD_FULL с и дольше — max (~15 м,
+## если смотреть прямо; выше взгляд — дальше). Дуга — чуть вверх от взгляда (THROW_LIFT).
+const THROW_SPEED_MIN := 4.0
+const THROW_SPEED_MAX := 17.0
+const THROW_HOLD_FULL := 1.0
 const THROW_LIFT := 0.18
+## Откуда вылетает предмет — от глаз, в осях взгляда, м: слева внизу, где рука (x — вправо, y — вверх, z — назад).
+const THROW_ORIGIN := Vector3(-0.22, -0.2, -0.45)
+## Дуга-подсказка, пока зажата ЛКМ: считается той же формулой, что полёт (шаг физики, тяжесть, linear_damp предмета),
+## до первой стены или пола. Точки пунктира — через ARC_DOT_STEP м, первая — в ARC_DOT_FROM м от руки;
+## размер точки и метки места падения; полёт считается не дольше ARC_MAX_TIME с.
+const THROW_DAMP := 0.2
+const ARC_DOT_STEP := 0.45
+const ARC_DOT_FROM := 0.6
+const ARC_DOT_SIZE := 0.012
+const ARC_MARK_RADIUS := 0.16
+const ARC_MAX_TIME := 4.0
+const ARC_COLOR := Color(0.95, 0.86, 0.66)
 ## Как далеко тянется рука, чтобы взять предмет (E), м, и в каком угле от взгляда, градусы.
 const PICK_DISTANCE := 1.9
 const PICK_ANGLE := 22.0

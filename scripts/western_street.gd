@@ -381,12 +381,32 @@ func _check_first_saint() -> void:
 
 func _play_first_saint() -> void:
 	var sn := _first_saint
+	var victim := cell_point(D.FIRST_SAINT.victim.x, D.FIRST_SAINT.victim.y)
+	# Куда падает камень (между святым и телом) и где висит свет катсцены (над ними, со стороны героя)
+	var strike := sn.global_position.lerp(victim, 0.45) + Vector3.UP * 0.45
+	var to_hero := (_player.global_position - sn.global_position).normalized()
 	await Cutscenes.play_file(FIRST_SAINT_CUTSCENE, {"actors": {"saint": sn},
 		"points": {"stone": func() -> Vector3: return sn.stone_point(),
-			"victim": cell_point(D.FIRST_SAINT.victim.x, D.FIRST_SAINT.victim.y) + Vector3.UP * 0.3},
+			"victim": victim + Vector3.UP * 0.3, "strike": strike,
+			"alley_light": strike + Vector3.UP * 1.5 + to_hero * 0.8},
 		"target": self, "level": self})
 	if sn.state == Saint.State.SCENE:
 		first_saint_leave()
+
+
+## Шаг катсцены: бьёт ровно, без пауз.
+func first_saint_steady() -> void:
+	if _first_saint and _first_saint.state == Saint.State.SCENE:
+		_first_saint.strike_steady(true)
+
+
+## Шаг катсцены: замер и поворачивает голову к камере.
+func first_saint_freeze() -> void:
+	if _first_saint and _first_saint.state == Saint.State.SCENE:
+		_first_saint.stop_strikes()
+		var cam := get_viewport().get_camera_3d()
+		if cam:
+			_first_saint.scene_look(cam.global_position)
 
 
 ## Шаг катсцены: святой встаёт и уходит вглубь переулка.

@@ -272,8 +272,24 @@ func _body_params() -> Array:
 			func(v: float) -> void: _arms.palm_forward = v],
 		["fing_yaw", "Пальцы влево°", -30.0, 120.0, 1.0, _arms.fingers_yaw, func(v: float) -> void: _arms.fingers_yaw = v],
 	]
-	for o in [["lamp", "Свет."], ["lamp_run", "Бег"], ["lamp_crouch", "Присед"], ["lamp_wall", "Стена"]]:
-		var prop: String = "lamp_offset" + o[0].trim_prefix("lamp")
+	# Камера на бегу (доделка 5-2)
+	params.append_array([
+		["bob_up", "Бег: качание ↕", 0.0, 0.12, 0.002, _body.run_bob_up, func(v: float) -> void: _body.run_bob_up = v],
+		["bob_side", "Бег: качание ↔", 0.0, 0.08, 0.002, _body.run_bob_side,
+			func(v: float) -> void: _body.run_bob_side = v],
+		["bob_roll", "Бег: крен шага°", 0.0, 4.0, 0.1, _body.run_bob_roll, func(v: float) -> void: _body.run_bob_roll = v],
+		["turn_roll", "Бег: крен повор.°", 0.0, 8.0, 0.1, _body.run_turn_roll,
+			func(v: float) -> void: _body.run_turn_roll = v],
+		["turn_roll_rate", "Крен при °/с", 30.0, 360.0, 5.0, _body.run_turn_roll_rate,
+			func(v: float) -> void: _body.run_turn_roll_rate = v],
+		["stop_nod", "Стоп: кивок°", 0.0, 10.0, 0.1, _body.run_stop_nod, func(v: float) -> void: _body.run_stop_nod = v],
+		["stop_dip", "Стоп: просадка", 0.0, 0.12, 0.002, _body.run_stop_dip,
+			func(v: float) -> void: _body.run_stop_dip = v],
+	])
+	for o in [["lamp", "Свет."], ["lamp_run", "Бег"], ["lamp_crouch", "Присед"], ["lamp_down", "В пол"], ["lamp_wall", "Стена"],
+			["hold", "Предм."], ["hold_down", "Пр. в пол"]]:
+		var prop: String = ("left_hold_offset" + o[0].trim_prefix("hold")) if o[0].begins_with("hold") \
+			else "lamp_offset" + o[0].trim_prefix("lamp")
 		var cur: Vector3 = _arms.get(prop)
 		for axis in 3:
 			var ax: String = ["x", "y", "z"][axis]

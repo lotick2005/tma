@@ -11,6 +11,8 @@ extends Node3D
 ## • Камера — всегда в глазах: на кости Head (eye_forward / eye_up в осях головы), со сглаживанием camera_smooth,
 ##   качается сама, от анимации. Тело под камеру не сдвигается. От стен — сфера camera_wall_radius от середины
 ##   груди к глазам: упёрлась — камера останавливается у стены, тело стоит, где стояло.
+## • На бегу камера живее (группа «Камера на бегу»): качается в такт шагам (вверх-вниз и чуть вбок, по касаниям
+##   ступней), кренится в сторону поворота, коротко «кивает» при остановке. Шагом и в приседе — только анимация.
 ## • Взгляд вниз — в основном шея и голова; позвоночник добирает только остаток (не больше spine_pitch_max на весь
 ##   корпус, в приседе — доля crouch_spine_pitch). Глядя прямо спина ровная.
 ## • Голова — отдельный меш, в глазах не рисуется; шея, руки и грудь видны всегда. near_discard (hide_radius) —
@@ -37,6 +39,18 @@ signal foot_down
 @export var camera_wall_radius := 0.15
 ## Страховка от ближней плоскости: своё тело не рисуется ближе этого к камере, м (голова скрыта отдельно).
 @export var hide_radius := 0.08
+
+@export_group("Камера на бегу")
+## Качание в такт шагам: вверх-вниз и вбок (к опорной ноге), м; крен в такт шагам, град.
+@export var run_bob_up := 0.04
+@export var run_bob_side := 0.022
+@export var run_bob_roll := 0.9
+## Крен в сторону поворота, град — полный при такой скорости поворота взгляда, град/с.
+@export var run_turn_roll := 2.5
+@export var run_turn_roll_rate := 140.0
+## Остановился с бега: «кивок» вниз, град, и просадка камеры, м (пружина вернёт за ~0,3 с).
+@export var run_stop_nod := 3.0
+@export var run_stop_dip := 0.035
 
 @export_group("Осанка")
 ## Взгляд вниз до этого угла — только шея и голова, град; дальше добавляется позвоночник.
@@ -132,6 +146,17 @@ var _cam_pos := Vector3.ZERO
 var _cam_ready := false
 var _time := 0.0
 var _foot_up := [true, true]
+## Камера на бегу: время с последнего шага и между шагами, какая нога опорная (−1 левая, +1 правая),
+## доля бега, крен поворота, пружина кивка.
+var _step_time := 0.0
+var _step_len := 0.33
+var _step_side := 1.0
+var _bob_w := 0.0
+var _turn_roll := 0.0
+var _prev_yaw := 0.0
+var _prev_speed := 0.0
+var _nod := 0.0
+var _nod_vel := 0.0
 var _delta := 0.016
 
 @onready var _lamp: Node3D = $OilLamp
@@ -497,7 +522,40 @@ func _place_camera(delta: float) -> void:
 		_cam_pos = eye
 		_cam_ready = true
 	_cam_pos = _cam_pos.lerp(eye, 1.0 - exp(-camera_smooth * delta))
-	_player.place_camera(_wall_clamp(_cam_pos))
+	_player.place_camera(_wall_clamp(_cam_pos + _run_camera(delta)))
+
+
+## Камера на бегу: сдвиг камеры (в осях Player) — качание в такт шагам и просадка при остановке;
+## крен и кивок — поворотом самой камеры (в катсцене её поворот ведёт проигрыватель: дрожь, завал).
+func _run_camera(delta: float) -> Vector3:
+	_step_time += delta
+	var run_w := clampf(_weights["run"] + _weights["run_back"], 0.0, 1.0)
+	_bob_w = lerpf(_bob_w, run_w, 1.0 - exp(-8.0 * delta))
+	# Шаг: в касании камера внизу, между шагами — вверху; вбок — к опорной ноге и обратно
+	var u := clampf(_step_time / _step_len, 0.0, 1.0)
+	var sway := sin(PI * u) * _step_side * _bob_w
+	var off := Vector3(sway * run_bob_side, -cos(TAU * u) * 0.5 * run_bob_up * _bob_w, 0.0)
+	# Крен в сторону поворота
+	var yaw := _player.global_rotation.y
+	var rate := wrapf(yaw - _prev_yaw, -PI, PI) / maxf(delta, 1e-4)
+	_prev_yaw = yaw
+	var lean := clampf(rate / deg_to_rad(maxf(run_turn_roll_rate, 1.0)), -1.0, 1.0) * deg_to_rad(run_turn_roll) * run_w
+	_turn_roll = lerpf(_turn_roll, lean, 1.0 - exp(-6.0 * delta))
+	# Остановился с бега — кивок (затухающая пружина)
+	var speed := _world_vel.length()
+	if _prev_speed > (_walk_speed + _run_speed) * 0.5 and speed < 0.1:
+		_nod_vel = deg_to_rad(run_stop_nod) * 16.0 / 0.52
+	_prev_speed = speed
+	var steps := ceili(delta * 120.0)
+	var dt := delta / maxf(steps, 1)
+	for i in steps:
+		_nod_vel += (-256.0 * _nod - 17.6 * _nod_vel) * dt
+		_nod += _nod_vel * dt
+	var nod_k := _nod / deg_to_rad(maxf(run_stop_nod, 0.01))
+	off.y -= run_stop_dip * nod_k
+	if not Cutscenes.playing:
+		_player.eye_camera().rotation = Vector3(-_nod, 0.0, _turn_roll - sway * deg_to_rad(run_bob_roll))
+	return off
 
 
 ## Камера (в осях Player) не дальше стены: сфера от середины груди к глазам.
@@ -528,6 +586,9 @@ func _detect_steps() -> void:
 		if _foot_up[i] and y < FOOT_DOWN:
 			_foot_up[i] = false
 			if active:
+				_step_len = lerpf(_step_len, clampf(_step_time, 0.2, 0.6), 0.5)
+				_step_time = 0.0
+				_step_side = -1.0 if i == 0 else 1.0
 				foot_down.emit()
 		elif not _foot_up[i] and y > FOOT_UP:
 			_foot_up[i] = true

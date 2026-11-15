@@ -143,6 +143,17 @@ var _strike_t := 0.0
 var _strike_pause := 0.0
 var _strike_angle := 0.0
 var _stone: MeshInstance3D
+## Удар: доля IK руки поверх анимации (0 — рука из анимации), сколько ударов до паузы (−1 — без пауз: катсцена),
+## толчок корпуса вперёд в момент удара (затухает).
+var _strike_w := 0.0
+var _strike_left := 3
+var _strike_steady := false
+var _strike_jolt := 0.0
+## Катсцена: повернуть голову к точке (доля 0…1).
+var _scene_look := Vector3.ZERO
+var _scene_look_on := false
+var _scene_look_w := 0.0
+var _head_fwd_l := Vector3.BACK
 var _bones := {}
 var _scene_anim := ""
 
@@ -174,8 +185,10 @@ func _ready() -> void:
 	set_anim_fps(anim_fps)
 	var skel := character.skeleton
 	_head = skel.find_bone("Head")
-	for b in ["RightUpperArm", "RightLowerArm", "RightHand", "RightIndexProximal"]:
+	for b in ["RightUpperArm", "RightLowerArm", "RightHand", "RightIndexProximal", "Spine", "Neck"]:
 		_bones[b] = skel.find_bone(b)
+	# Лицо модели — +Z скелета
+	_head_fwd_l = (skel.get_bone_global_rest(_head).basis.inverse() * Vector3.BACK).normalized()
 	var mod := _Strike.new()
 	mod.saint = self
 	skel.add_child(mod)
@@ -227,6 +240,8 @@ func reset() -> void:
 	_patrol_i = 0
 	_returning = false
 	_strike = false
+	_scene_look_on = false
+	set_anim_fps(anim_fps)
 	if is_inside_tree():
 		_enter(start_state, true)
 	else:
@@ -694,20 +709,59 @@ func play_hold() -> void:
 
 # ─── Первый святой: удар камнем (катсцена, CLAUDE.md §3) ──────────────────────
 
-## Стоит на коленях над телом и бьёт его камнем, снова и снова. victim — куда бить.
+## Удар камнем — замах и падение руки, с: поднимает STRIKE_RAISE, держит наверху STRIKE_TOP, бьёт за STRIKE_FALL,
+## рука лежит на теле до конца STRIKE_PERIOD (один удар в ~1,5 с). На каждый удар — hit_wet.
+const STRIKE_PERIOD := 1.5
+const STRIKE_RAISE := 0.6
+const STRIKE_TOP := 0.2
+const STRIKE_FALL := 0.11
+## Кисть с камнем от плеча (в осях святого: вправо, вверх, назад), м: наверху — над головой и чуть за ней,
+## внизу — на теле перед коленями.
+const STRIKE_HAND_TOP := Vector3(0.14, 0.5, 0.1)
+const STRIKE_HAND_DOWN := Vector3(-0.05, -0.42, -0.5)
+## Корпус откидывается назад на замахе и подаётся вперёд на ударе, град.
+const STRIKE_LEAN_BACK := 12.0
+const STRIKE_LEAN_HIT := 9.0
+
+## Стоит на коленях над телом и бьёт его камнем, снова и снова: два-четыре удара, пауза, ещё.
 func start_strikes() -> void:
 	_enter(State.SCENE)
 	_scene_anim = "kneel_inspect"
 	character.play("kneel_inspect", 0.0)
+	# Здесь поза плавная: рука с камнем идёт каждый кадр
+	character.set_update_interval(0.0)
 	_strike = true
-	_strike_t = 0.0
+	_strike_steady = false
+	_strike_t = STRIKE_PERIOD
 	_strike_pause = randf_range(0.3, 1.0)
+	_strike_left = randi_range(2, 4)
+	_strike_w = 1.0
+	_scene_look_on = false
+	_scene_look_w = 0.0
 	if _stone == null:
 		_stone = MeshInstance3D.new()
 		_stone.mesh = PropLibrary.mesh("stone_held")
 		_stone.material_override = PropLibrary.material()
 		add_child(_stone)
 		_stone.top_level = true
+
+
+## Катсцена: бить ровно, без пауз (true) — удар раз в STRIKE_PERIOD.
+func strike_steady(on: bool) -> void:
+	_strike_steady = on
+	if on:
+		_strike_pause = 0.0
+
+
+## Катсцена: замер — рука с камнем опускается и больше не поднимается.
+func stop_strikes() -> void:
+	_strike = false
+
+
+## Катсцена: повернуть голову к точке (on = false — вернуть).
+func scene_look(point: Vector3, on := true) -> void:
+	_scene_look = point
+	_scene_look_on = on
 
 
 ## Точка камня в руке (катсцена: вставка «камень в руке»).
@@ -721,54 +775,134 @@ func stand_and_leave() -> void:
 	_scene_anim = "kneel_stand_up"
 	character.play("kneel_stand_up", 0.15, 1.0, true)
 	await get_tree().create_timer(2.2).timeout
+	_scene_look_on = false
 	if state != State.SCENE:
 		return
 	character.reset_motion()
 	_scene_anim = ""
 	start_state = State.WANDER
+	set_anim_fps(anim_fps)
 	_enter(State.WANDER, true)
 	_timer = 0.0
 
 
 func _process(delta: float) -> void:
+	_strike_w = move_toward(_strike_w, 1.0 if _strike else 0.0, delta / 0.6)
+	_scene_look_w = move_toward(_scene_look_w, 1.0 if _scene_look_on else 0.0, delta / 0.7)
+	_strike_jolt = maxf(0.0, _strike_jolt - delta / 0.35)
 	if not _strike:
+		# Замер: рука плавно опускается из того места, где была
+		_strike_angle = move_toward(_strike_angle, 0.0, delta / 0.5)
 		return
 	_strike_t += delta
-	var period := 0.45 + 0.1 + 0.09 + 0.35
-	if _strike_t >= period + _strike_pause:
+	if _strike_t >= STRIKE_PERIOD + _strike_pause:
 		_strike_t = 0.0
-		_strike_pause = randf_range(1.5, 4.0) if randf() < 0.55 else randf_range(0.2, 0.6)
+		_strike_pause = 0.0
+		if not _strike_steady:
+			_strike_left -= 1
+			if _strike_left <= 0:
+				_strike_left = randi_range(2, 4)
+				_strike_pause = randf_range(1.5, 3.5)
+	var t := _strike_t
+	var hit_at := STRIKE_RAISE + STRIKE_TOP + STRIKE_FALL
 	var was := _strike_angle
-	# Рывками: угол обновляется с частотой позы
-	var t := snappedf(_strike_t, 1.0 / maxf(anim_fps, 1.0))
-	if t < 0.45:
-		_strike_angle = smoothstep(0.0, 0.45, t)
-	elif t < 0.55:
+	if t < STRIKE_RAISE:
+		_strike_angle = smoothstep(0.0, 1.0, t / STRIKE_RAISE)
+	elif t < STRIKE_RAISE + STRIKE_TOP:
 		_strike_angle = 1.0
-	elif t < 0.64:
-		_strike_angle = 1.0 - (t - 0.55) / 0.09
+	elif t < hit_at:
+		# Падает с разгоном
+		var k := (t - STRIKE_RAISE - STRIKE_TOP) / STRIKE_FALL
+		_strike_angle = 1.0 - k * k
 	else:
 		_strike_angle = 0.0
-	if was > 0.2 and _strike_angle <= 0.0 and t < 0.7:
+	if was > 0.0 and _strike_angle <= 0.0:
+		_strike_jolt = 1.0
 		AudioManager.play_3d("hit_wet", stone_point(), {"db": 2.0})
 
 
-## Из модификатора скелета: поднять правую руку на угол и камень — в кисть.
+## Из модификатора скелета: корпус и правая рука с камнем — замах и удар (IK от плеча), голова — к точке катсцены,
+## камень — в кисть.
 func _apply_strike() -> void:
 	if _stone == null or not _stone.visible:
 		return
 	var skel := character.skeleton
-	if _strike and _strike_angle > 0.0:
-		var right := skel.global_basis.inverse() * (global_basis * Vector3.RIGHT)
-		right = right.normalized()
-		var ua: int = _bones.RightUpperArm
-		var g := skel.get_bone_global_pose(ua)
-		var rot := Basis(right, deg_to_rad(125.0) * _strike_angle)
-		var pg := skel.get_bone_global_pose(skel.get_bone_parent(ua))
-		skel.set_bone_pose_rotation(ua, (pg.basis.orthonormalized().inverse() * rot * g.basis.orthonormalized()).get_rotation_quaternion())
-		var fa: int = _bones.RightLowerArm
-		skel.set_bone_pose_rotation(fa, skel.get_bone_pose_rotation(fa) * Quaternion(Vector3.RIGHT, deg_to_rad(-35.0) * _strike_angle))
+	var to_skel := skel.global_transform.affine_inverse()
+	var axes := (to_skel.basis * global_basis).orthonormalized()
+	if _strike_w > 0.001:
+		# Корпус: назад на замахе, вперёд на ударе
+		var lean := deg_to_rad(STRIKE_LEAN_BACK) * _strike_angle - deg_to_rad(STRIKE_LEAN_HIT) * _strike_jolt * _strike_jolt
+		_rotate_bone(_bones.Spine, Basis(axes.x, lean * _strike_w))
+		# Рука: кисть идёт по дуге от тела вверх за голову
+		var shoulder := skel.get_bone_global_pose(_bones.RightUpperArm).origin
+		var top := axes * STRIKE_HAND_TOP
+		var down := axes * STRIKE_HAND_DOWN
+		var dir := down.normalized().slerp(top.normalized(), _strike_angle)
+		var hand := shoulder + dir * lerpf(down.length(), top.length(), _strike_angle)
+		_solve_right_arm(hand, axes * Vector3(0.9, -0.2, 0.5), _strike_w)
+	if _scene_look_w > 0.001:
+		var want := (to_skel * _scene_look - skel.get_bone_global_pose(_head).origin).normalized()
+		for i in 2:
+			var hb := skel.get_bone_global_pose(_head).basis.orthonormalized()
+			var q := Quaternion(hb * _head_fwd_l, want)
+			var ang := q.get_angle()
+			if ang < 0.001:
+				break
+			var share := (0.4 if i == 0 else 1.0) * _scene_look_w
+			var lim := deg_to_rad(40.0 if i == 0 else 80.0)
+			_rotate_bone(_bones.Neck if i == 0 else _head, Basis(Quaternion().slerp(q, minf(share, lim / ang))))
 	var h := skel.get_bone_global_pose(_bones.RightHand)
 	var f := skel.get_bone_global_pose(_bones.RightIndexProximal)
 	var at := skel.global_transform * h.origin.lerp(f.origin, 0.8)
 	_stone.global_transform = Transform3D(skel.global_basis.orthonormalized() * h.basis.orthonormalized(), at)
+
+
+## Повернуть кость в пространстве скелета (вокруг её начала), дети едут вместе с ней.
+func _rotate_bone(bone: int, rot: Basis) -> void:
+	var skel := character.skeleton
+	var g := skel.get_bone_global_pose(bone).basis.orthonormalized()
+	var parent := skel.get_bone_parent(bone)
+	var pb := skel.get_bone_global_pose(parent).basis.orthonormalized() if parent >= 0 else Basis()
+	skel.set_bone_pose_rotation(bone, (pb.inverse() * rot.orthonormalized() * g).get_rotation_quaternion())
+
+
+## Двухзвенный IK правой руки в пространстве скелета (как у героя, hero_arms.gd): кисть — в точку hand,
+## локоть — в сторону pole, weight — доля поверх анимации.
+func _solve_right_arm(hand: Vector3, pole: Vector3, weight: float) -> void:
+	var skel := character.skeleton
+	var ua: int = _bones.RightUpperArm
+	var fa: int = _bones.RightLowerArm
+	var hb: int = _bones.RightHand
+	var a := skel.get_bone_rest(fa).origin.length()
+	var b := skel.get_bone_rest(hb).origin.length()
+	var parent_g := skel.get_bone_global_pose(skel.get_bone_parent(ua)).basis.orthonormalized()
+	var ua_g := skel.get_bone_global_pose(ua)
+	var fa_g := skel.get_bone_global_pose(fa)
+	var hb_g := skel.get_bone_global_pose(hb)
+	var ua_b := ua_g.basis.orthonormalized()
+	var fa_b := fa_g.basis.orthonormalized()
+	var to_target := hand - ua_g.origin
+	var d := clampf(to_target.length(), 0.05, (a + b) * 0.999)
+	var dir := to_target.normalized()
+	var cos_a := clampf((a * a + d * d - b * b) / (2.0 * a * d), -1.0, 1.0)
+	var out := (pole - dir * pole.dot(dir)).normalized()
+	var elbow := ua_g.origin + dir * a * cos_a + out * a * sqrt(1.0 - cos_a * cos_a)
+	var wrist := ua_g.origin + dir * d
+	var ua_new := _arc_turn(fa_g.origin - ua_g.origin, elbow - ua_g.origin) * ua_b
+	var fa_cur := ua_new * ua_b.inverse() * fa_b
+	var fa_new := _arc_turn(fa_cur * skel.get_bone_rest(hb).origin, wrist - elbow) * fa_cur
+	ua_new = ua_b.slerp(ua_new, weight)
+	fa_new = fa_b.slerp(fa_new, weight)
+	skel.set_bone_pose_rotation(ua, (parent_g.inverse() * ua_new).get_rotation_quaternion())
+	skel.set_bone_pose_rotation(fa, (ua_new.inverse() * fa_new).get_rotation_quaternion())
+
+
+## Поворот по кратчайшей дуге от направления from к to.
+func _arc_turn(from: Vector3, to: Vector3) -> Basis:
+	var f := from.normalized()
+	var t := to.normalized()
+	if f.dot(t) > 0.99999:
+		return Basis()
+	if f.dot(t) < -0.9999:
+		return Basis(f.cross(Vector3.UP).normalized(), PI)
+	return Basis(Quaternion(f, t))
