@@ -115,10 +115,11 @@ func place(kind: String, pos: Vector3, yaw: float, indoor: bool = false, scale: 
 	var xf := Transform3D(Basis(Vector3.UP, yaw).scaled(Vector3.ONE * scale), pos)
 	PropRegistry.add(kind, xf)
 	_b.layer = LevelBuilder.INTERIOR_LAYER if indoor else 1
+	var mat: Material = PropLibrary.material_for(kind) if inf.has("mat") else _mat
 	if inf.get("mm", false):
-		_b.add_instance(PropLibrary.mesh(kind), xf, _mat)
+		_b.add_instance(PropLibrary.mesh(kind), xf, mat)
 	else:
-		_b.add_mesh(PropLibrary.mesh(kind), xf, _mat)
+		_b.add_mesh(PropLibrary.mesh(kind), xf, mat)
 	var size: Vector3 = inf.get("collide", Vector3.ZERO)
 	if size != Vector3.ZERO:
 		var at: Vector3 = inf.get("collide_at", Vector3.ZERO)

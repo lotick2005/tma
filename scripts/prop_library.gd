@@ -78,18 +78,20 @@ const KINDS := {
 	"sandals": {"collide": Vector3.ZERO, "mm": true},
 	"cloak": {"collide": Vector3.ZERO},
 	"litter": {"collide": Vector3(1.9, 0.5, 0.7)},
-	"body": {"collide": Vector3.ZERO},
-	"body_soldier": {"collide": Vector3.ZERO},
-	"body_doorway": {"collide": Vector3.ZERO},
-	"soldier_sitting": {"collide": Vector3.ZERO, "wall": true},
+	# Полотно, которым накрыли убитого: кладётся поверх тела-модели (Corpses: corpse_laid) в ту же точку
+	"cover_cloth": {"collide": Vector3.ZERO},
 	# Ужас: кровь (тёмно-бордовая, не красная), святые прошли — пелены и пыль
 	"blood_pool": {"collide": Vector3.ZERO},
 	"blood_drag": {"collide": Vector3.ZERO},
 	"blood_steps": {"collide": Vector3.ZERO},
 	"blood_splatter": {"collide": Vector3.ZERO, "wall": true},
-	# Тела унесли: куски полос волочения (кладутся цепочкой, DRAG_TRAILS) — узкая и широкая
-	"blood_trail": {"collide": Vector3.ZERO, "mm": true},
-	"blood_trail_wide": {"collide": Vector3.ZERO, "mm": true},
+	# Тела унесли: куски следа волочения 0,6 × 2,4 м (кладутся цепочкой, DRAG_TRAILS). Четыре рисунка на своей
+	# текстуре с прозрачностью (trail_material): 1 — ровный след, 2 — с разрывом и отпечатком ладони, 3 — смаз,
+	# 4 — борозды от пяток и отпечатки ступней
+	"blood_trail_1": {"collide": Vector3.ZERO, "mm": true, "mat": "trail"},
+	"blood_trail_2": {"collide": Vector3.ZERO, "mm": true, "mat": "trail"},
+	"blood_trail_3": {"collide": Vector3.ZERO, "mm": true, "mat": "trail"},
+	"blood_trail_4": {"collide": Vector3.ZERO, "mm": true, "mat": "trail"},
 	# Забиты святыми: окровавленный камень и кирпич рядом с телом
 	"stone_bloody": {"collide": Vector3.ZERO},
 	"brick_bloody": {"collide": Vector3.ZERO},
@@ -169,6 +171,13 @@ static func material() -> ShaderMaterial:
 	if _material == null:
 		_material = PsxMaterial.make(_atlas())
 	return _material
+
+
+## Материал предмета: у следов волочения — свой (текстура с прозрачностью), у остальных — общий атлас.
+static func material_for(kind: String) -> ShaderMaterial:
+	if (KINDS.get(kind, {}) as Dictionary).get("mat", "") == "trail":
+		return trail_material()
+	return material()
 
 
 static func mesh(kind: String) -> Mesh:
@@ -1243,148 +1252,29 @@ static func _ball(b: PB, c: Vector3, r: float, tile: int, scale_xz := Vector2.ON
 		c, Basis(), scale_xz)
 
 
-## Фигура человека по суставам j (словарь точек): туловище в тунике, руки и ноги, голова с волосами, ступни.
-## tunic — плитка туники, skin — открытых рук и ног (у накрытого тела — тоже ткань).
-static func _figure(b: PB, j: Dictionary, tunic: int, skin: int = Tile.SKIN, feet: int = Tile.WOOD_DARK) -> void:
-	var hip: Vector3 = j.hip
-	var neck: Vector3 = j.neck
-	var axis := (neck - hip).normalized()
-	var lat := ((j.sr as Vector3) - (j.sl as Vector3))
-	lat = (lat - axis * lat.dot(axis)).normalized()
-	var basis := Basis(lat, axis, lat.cross(axis))
-	# Туловище с подолом туники до середины бедра
-	var low := hip - axis * 0.22
-	b.box((low + neck) * 0.5, Vector3(0.36, (neck - low).length(), 0.22), tunic, basis)
-	_limb(b, neck, (j.head as Vector3), 0.09, skin)
-	_ball(b, j.head, 0.11, skin)
-	if skin == Tile.SKIN:
-		# Волосы — шапочкой на затылке
-		_ball(b, (j.head as Vector3) - basis.z * 0.025 + axis * 0.02, 0.1, Tile.HAIR)
-	for s in ["l", "r"]:
-		var sh: Vector3 = j["s" + s]
-		var el: Vector3 = j["e" + s]
-		var ha: Vector3 = j["h" + s]
-		# Короткий рукав туники, потом голая рука и кисть
-		_limb(b, sh, sh.lerp(el, 0.45), 0.12, tunic)
-		_limb(b, sh.lerp(el, 0.4), el, 0.085, skin)
-		_limb(b, el, ha, 0.075, skin)
-		_ball(b, ha + (ha - el).normalized() * 0.05, 0.05, skin)
-		var hp: Vector3 = j["p" + s]
-		var kn: Vector3 = j["k" + s]
-		var ft: Vector3 = j["f" + s]
-		_limb(b, hp, kn, 0.13, skin)
-		_limb(b, kn, ft, 0.1, skin)
-		var fwd: Vector3 = j.get("toes", Vector3.FORWARD)
-		var up := Vector3.UP if absf(fwd.y) < 0.95 else Vector3.BACK
-		b.box(ft + fwd * 0.07 + Vector3.DOWN * 0.03, Vector3(0.1, 0.06, 0.24), feet, Basis.looking_at(fwd, up))
-
-
-## Сколько вариантов живых людей (толпа вступления): одежда и покрывало на голове.
-const PERSON_VARIANTS := 4
-
-
-## Стоящий живой человек ростом ~1,7 м (толпа и вестник во вступлении), лицом в −Z, точка — между ступней.
-## Варианты: 0 — мужчина в льняной тунике, 1 — женщина в синем с покрывалом, 2 — в охристом,
-## 3 — в буром с белым платком. Меш кешируется.
-static func person_mesh(variant: int) -> Mesh:
-	var key := "person_%d" % variant
-	if _meshes.has(key):
-		return _meshes[key]
-	var robes := [Tile.LINEN, Tile.CLOTH_BLUE, Tile.CLOTH_OCHRE, Tile.SACK]
-	var covers := [-1, Tile.LINEN, -1, Tile.LINEN]
-	var v := posmod(variant, PERSON_VARIANTS)
-	var robe: int = robes[v]
+## Полотно, которым накрыли убитого (тело — модель Corpses "corpse_laid": таз в точке, голова в −Z).
+## Ткань лежит по телу — бугор головы, грудь, колени — и складками на земле вокруг; ступни торчат наружу (+Z).
+static func _make_cover_cloth() -> Mesh:
 	var b := PB.new()
-	# У _figure лицо смотрит в +Z (волосы — на −Z): строим зеркально по Z и разворачиваем на 180°, лицом в −Z
-	b.xf = Transform3D(Basis(Vector3.UP, PI), Vector3.ZERO)
-	_figure(b, {
-		"hip": Vector3(0.0, 0.95, 0.0), "neck": Vector3(0.0, 1.44, 0.0), "head": Vector3(0.0, 1.58, 0.02),
-		"sl": Vector3(-0.2, 1.4, 0.0), "sr": Vector3(0.2, 1.4, 0.0),
-		"el": Vector3(-0.25, 1.13, -0.03), "hl": Vector3(-0.24, 0.9, 0.06),
-		"er": Vector3(0.25, 1.13, -0.03), "hr": Vector3(0.24, 0.9, 0.06),
-		"pl": Vector3(-0.1, 0.95, 0.0), "kl": Vector3(-0.11, 0.5, 0.01), "fl": Vector3(-0.12, 0.07, 0.0),
-		"pr": Vector3(0.1, 0.95, 0.0), "kr": Vector3(0.11, 0.5, 0.01), "fr": Vector3(0.12, 0.07, 0.0),
-		"toes": Vector3.BACK,
-	}, robe)
-	# Длинная одежда до икр поверх ног
-	b.box(Vector3(0.0, 0.62, 0.0), Vector3(0.42, 0.72, 0.28), robe)
-	b.box(Vector3(0.0, 0.34, 0.0), Vector3(0.46, 0.18, 0.3), robe)
-	var cover: int = covers[v]
-	if cover >= 0:
-		# Покрывало: на голове и спадает на спину
-		_ball(b, Vector3(0.0, 1.6, 0.0), 0.13, cover)
-		b.box(Vector3(0.0, 1.3, -0.1), Vector3(0.4, 0.55, 0.08), cover)
-	var m := b.commit()
-	_meshes[key] = m
-	return m
-
-
-## Человек в дверном проёме: лежит ничком головой на улицу (−Z), правая рука тянется вперёд, на улицу.
-## Точка — порог; ноги — в доме (+Z).
-static func _make_body_doorway() -> Mesh:
-	var b := PB.new()
-	_figure(b, {
-		"hip": Vector3(0.0, 0.12, 0.45), "neck": Vector3(0.0, 0.13, -0.15), "head": Vector3(0.05, 0.13, -0.32),
-		"sl": Vector3(-0.2, 0.12, -0.1), "sr": Vector3(0.2, 0.12, -0.1),
-		"el": Vector3(-0.38, 0.08, 0.05), "hl": Vector3(-0.32, 0.05, -0.2),
-		"er": Vector3(0.26, 0.08, -0.45), "hr": Vector3(0.22, 0.05, -0.78),
-		"pl": Vector3(-0.1, 0.12, 0.5), "kl": Vector3(-0.12, 0.08, 0.92), "fl": Vector3(-0.16, 0.09, 1.3),
-		"pr": Vector3(0.1, 0.12, 0.5), "kr": Vector3(0.16, 0.08, 0.92), "fr": Vector3(0.24, 0.09, 1.28),
-		"toes": Vector3.DOWN.lerp(Vector3.BACK, 0.5).normalized(),
-	}, Tile.LINEN)
-	return b.commit()
-
-
-## Тело солдата: лежит на боку, поджав ноги, в тёмно-красной тунике и калигах.
-static func _make_body_soldier() -> Mesh:
-	var b := PB.new()
-	_figure(b, {
-		"hip": Vector3(0.3, 0.2, 0.0), "neck": Vector3(-0.3, 0.22, 0.05), "head": Vector3(-0.47, 0.17, 0.1),
-		"sl": Vector3(-0.25, 0.07, 0.03), "sr": Vector3(-0.25, 0.37, 0.03),
-		"el": Vector3(-0.45, 0.05, -0.22), "hl": Vector3(-0.7, 0.05, -0.25),
-		"er": Vector3(-0.08, 0.3, -0.25), "hr": Vector3(0.12, 0.2, -0.33),
-		"pl": Vector3(0.33, 0.12, 0.0), "kl": Vector3(0.62, 0.08, -0.32), "fl": Vector3(1.0, 0.08, -0.08),
-		"pr": Vector3(0.33, 0.28, 0.0), "kr": Vector3(0.6, 0.25, -0.38), "fr": Vector3(0.96, 0.2, -0.22),
-		"toes": Vector3.FORWARD,
-	}, Tile.CLOTH_RED)
-	return b.commit()
-
-
-## Солдат сидит у стены (точка у стены, тело в −Z): спиной к стене, голова упала на грудь, одна нога согнута,
-## в опущенной правой руке — погасший светильник.
-static func _make_soldier_sitting() -> Mesh:
-	var b := PB.new()
-	_figure(b, {
-		"hip": Vector3(0.0, 0.16, -0.3), "neck": Vector3(0.02, 0.7, -0.14), "head": Vector3(0.1, 0.8, -0.26),
-		"sl": Vector3(-0.2, 0.64, -0.15), "sr": Vector3(0.2, 0.64, -0.15),
-		"el": Vector3(-0.3, 0.42, -0.3), "hl": Vector3(-0.17, 0.44, -0.58),
-		"er": Vector3(0.32, 0.36, -0.24), "hr": Vector3(0.33, 0.1, -0.44),
-		"pl": Vector3(-0.1, 0.16, -0.32), "kl": Vector3(-0.15, 0.44, -0.66), "fl": Vector3(-0.18, 0.08, -0.95),
-		"pr": Vector3(0.1, 0.16, -0.32), "kr": Vector3(0.15, 0.17, -0.76), "fr": Vector3(0.22, 0.09, -1.15),
-		"toes": Vector3.FORWARD,
-	}, Tile.CLOTH_RED)
-	# Погасший светильник в руке, наклонён — масло вытекло тёмным пятном
-	b.lathe([Vector2(0, 0), Vector2(0.04, 0), Vector2(0.05, 0.02), Vector2(0.022, 0.038), Vector2(0, 0.033)], 6, Tile.CLAY,
-		Vector3(0.36, 0.03, -0.53), Basis(Vector3.BACK, 0.4))
-	_blob(b, Vector3(0.42, 0.012, -0.62), 0.12, 0.08, Tile.SOOT, 91, 7)
-	return b.commit()
-
-
-## Тело, накрытое тканью: под полотном читаются голова, плечи, руки вдоль тела; босые ступни торчат наружу.
-static func _make_body() -> Mesh:
-	var b := PB.new()
-	_figure(b, {
-		"hip": Vector3(0.0, 0.16, 0.3), "neck": Vector3(0.0, 0.17, -0.3), "head": Vector3(0.0, 0.17, -0.48),
-		"sl": Vector3(-0.21, 0.16, -0.25), "sr": Vector3(0.21, 0.16, -0.25),
-		"el": Vector3(-0.28, 0.13, 0.0), "hl": Vector3(-0.28, 0.11, 0.3),
-		"er": Vector3(0.28, 0.13, 0.0), "hr": Vector3(0.28, 0.11, 0.3),
-		"pl": Vector3(-0.1, 0.15, 0.35), "kl": Vector3(-0.11, 0.13, 0.78), "fl": Vector3(-0.12, 0.11, 1.15),
-		"pr": Vector3(0.1, 0.15, 0.35), "kr": Vector3(0.11, 0.13, 0.78), "fr": Vector3(0.12, 0.11, 1.15),
-		"toes": Vector3.UP,
-	}, Tile.LINEN, Tile.LINEN, Tile.SKIN)
-	# Край полотна лёг складками на землю вокруг тела
-	_lump(b, Vector3(-0.38, 0.0, 0.1), 0.14, 0.55, 0.08, Tile.LINEN, 127, 7)
-	_lump(b, Vector3(0.38, 0.0, -0.1), 0.13, 0.5, 0.07, Tile.LINEN, 128, 7)
+	var rng := _rng(127)
+	# Сечения вдоль тела: [z, высота по оси тела, полуширина на земле]
+	var secs := [[-1.72, 0.0, 0.34], [-1.5, 0.27, 0.44], [-1.1, 0.34, 0.52], [-0.75, 0.37, 0.66], [-0.4, 0.37, 0.72],
+		[-0.05, 0.34, 0.72], [0.3, 0.28, 0.6], [0.62, 0.23, 0.48], [0.76, 0.0, 0.4]]
+	var across := [-1.0, -0.62, -0.25, 0.25, 0.62, 1.0]
+	var rows := []
+	for sec: Array in secs:
+		var row := []
+		for k: float in across:
+			var edge := absf(k) > 0.99
+			var w: float = sec[2] * (rng.randf_range(0.88, 1.12) if edge else 1.0)
+			var h: float = 0.0 if edge else float(sec[1]) * pow(1.0 - k * k, 0.55) * rng.randf_range(0.9, 1.08)
+			row.append(Vector3(k * w, 0.012 + h, float(sec[0]) + (rng.randf_range(-0.04, 0.04) if edge else 0.0)))
+		rows.append(row)
+	for i in rows.size() - 1:
+		for k in across.size() - 1:
+			b.quad(rows[i][k], rows[i][k + 1], rows[i + 1][k + 1], rows[i + 1][k], Tile.LINEN)
+	# Кровь проступила сквозь ткань у груди
+	_blob(b, Vector3(0.06, 0.0, -0.4), 0.12, 0.16, Tile.BLOOD_DARK, 128, 7)
 	return b.commit()
 
 
@@ -1424,44 +1314,154 @@ static func _sandal(b: PB, at: Vector3, yaw: float) -> void:
 
 # ─── Тела унесли, забили, сожгли (этап 4в) ───────────────────────────────────
 
-## Одна рваная полоса вдоль Z (от +half до −half) с серединой в x0: ширина гуляет, местами рвётся.
-static func _trail_strip(b: PB, seed: int, x0: float, w0: float, half: float, y: float) -> void:
-	var rng := _rng(seed)
-	var z := half
-	var x := x0
-	var w := w0
-	while z > -half:
-		var z1 := maxf(z - rng.randf_range(0.2, 0.34), -half)
-		var x1 := clampf(x + rng.randf_range(-0.04, 0.04), x0 - 0.06, x0 + 0.06)
-		var w1 := clampf(w + rng.randf_range(-0.05, 0.04), w0 * 0.6, w0 * 1.15)
-		if rng.randf() > 0.04:
-			b.quad(Vector3(x1 - w1 * 0.5, y, z1), Vector3(x1 + w1 * 0.5, y, z1), Vector3(x + w * 0.5, y, z), Vector3(x - w * 0.5, y, z),
-				Tile.BLOOD_DARK)
-		x = x1
-		z = z1
-		w = w1
+## Размер куска следа волочения, м (ширина × длина), и его текстуры, пикселей на кусок.
+const TRAIL_SIZE := Vector2(0.6, 2.4)
+const TRAIL_TEX := Vector2i(64, 256)
+const TRAIL_VARIANTS := 4
+
+static var _trail_mat: ShaderMaterial
 
 
-## Кусок полосы волочения 2,6 м: одного человека тащили по плитам. Куски кладутся цепочкой (DRAG_TRAILS).
-static func _make_blood_trail() -> Mesh:
-	var b := PB.new()
-	_trail_strip(b, 141, 0.0, 0.3, 1.3, 0.012)
-	_trail_strip(b, 142, 0.17, 0.07, 1.3, 0.013)
-	_blob(b, Vector3(-0.2, 0.012, 0.5), 0.07, 0.1, Tile.BLOOD_DARK, 143, 6)
-	_blob(b, Vector3(0.25, 0.012, -0.7), 0.05, 0.08, Tile.BLOOD_DARK, 144, 6)
-	return b.commit()
+## Материал следов волочения: psx-шейдер, текстура 256×256 с четырьмя рисунками (по столбцу 64×256 на кусок),
+## прозрачное отсекается (alpha_cut) — край следа рваный, дизером, а не ровной границей.
+static func trail_material() -> ShaderMaterial:
+	if _trail_mat == null:
+		_trail_mat = PsxMaterial.make(_trail_texture())
+		_trail_mat.set_shader_parameter("alpha_cut", 0.5)
+	return _trail_mat
 
 
-## Широкая полоса волочения 2,6 м: здесь тащили многих, одного за другим.
-static func _make_blood_trail_wide() -> Mesh:
-	var b := PB.new()
-	_trail_strip(b, 145, -0.3, 0.32, 1.3, 0.012)
-	_trail_strip(b, 146, 0.08, 0.36, 1.3, 0.013)
-	_trail_strip(b, 147, 0.42, 0.22, 1.3, 0.012)
-	_trail_strip(b, 148, -0.56, 0.06, 1.3, 0.013)
-	_blob(b, Vector3(0.08, 0.014, 0.2), 0.11, 0.4, Tile.BLOOD_BLACK, 149, 8)
-	_blob(b, Vector3(-0.62, 0.012, -0.5), 0.06, 0.1, Tile.BLOOD_DARK, 150, 6)
-	return b.commit()
+## Плавный шум по одной оси (значения 0…1 в узлах через 1, сглаженная интерполяция).
+static func _noise1(x: float, seed: int) -> float:
+	var i := floori(x)
+	var f := x - i
+	f = f * f * (3.0 - 2.0 * f)
+	var a := float(hash(Vector2i(i, seed)) % 1000) / 999.0
+	var c := float(hash(Vector2i(i + 1, seed)) % 1000) / 999.0
+	return lerpf(a, c, f)
+
+
+## Рисунок следа: тело тащили по плитам (вдоль v, сверху вниз). Не лента, а след: середина темнее и плотнее,
+## к краям — реже (дизер), ширина и сила гуляют, есть сухие разрывы и смазы, борозды от пяток; на втором куске —
+## отпечаток ладони сбоку, на четвёртом — отпечатки ступней.
+static func _trail_texture() -> ImageTexture:
+	var w := TRAIL_TEX.x
+	var h := TRAIL_TEX.y
+	var img := Image.create_empty(w * TRAIL_VARIANTS, h, false, Image.FORMAT_RGBA8)
+	img.fill(Color(0.1, 0.015, 0.02, 0.0))
+	var bayer := [0, 8, 2, 10, 12, 4, 14, 6, 3, 11, 1, 9, 15, 7, 13, 5]
+	var edge := Color(0.2, 0.03, 0.032)
+	var core := Color(0.04, 0.007, 0.011)
+	for k in TRAIL_VARIANTS:
+		var seed := 300 + k * 17
+		var rng := _rng(seed)
+		# Разрывы: [середина v, полудлина v] — там след почти пропадает
+		var gaps := []
+		for g in [1, 2, 0, 1][k]:
+			gaps.append([rng.randf_range(0.2, 0.8), rng.randf_range(0.03, 0.08)])
+		var smear := k == 2
+		var heels := 0.9 if k == 3 else (0.0 if smear else 0.45)
+		var a_map := PackedFloat32Array()
+		a_map.resize(w * h)
+		for y in h:
+			var v := float(y) / (h - 1)
+			# К концам куска след возвращается к середине и обычной ширине — куски стыкуются
+			var ends := sin(PI * v)
+			var cx := 0.5 + (_noise1(v * 3.0, seed) - 0.5) * 0.22 * ends
+			var hw := lerpf(0.13, 0.27, _noise1(v * 4.5, seed + 1)) * (1.35 if smear else 1.0)
+			var strength := lerpf(0.75, 1.15, _noise1(v * 7.0, seed + 2)) * (0.5 if smear else 1.0)
+			for g: Array in gaps:
+				strength *= smoothstep(0.0, 1.0, absf(v - float(g[0])) / float(g[1]) - 0.3)
+			var heel_on := heels * smoothstep(0.25, 0.5, _noise1(v * 9.0, seed + 3))
+			for x in w:
+				var u := (float(x) + 0.5) / w
+				var d := absf(u - cx) / hw
+				# Продольные волокна: полосы вдоль хода, медленно меняются
+				var fib := 0.55 + 0.45 * _noise1(u * 26.0 + _noise1(v * 2.0, seed + 5) * 3.0, seed + 4)
+				var a := clampf(1.0 - pow(d, 1.6), 0.0, 1.0) * strength * fib
+				for side: float in [-1.0, 1.0]:
+					var hd := absf(u - (cx + side * 0.1 + (_noise1(v * 5.0, seed + 6) - 0.5) * 0.04)) / 0.022
+					a = maxf(a, clampf(1.0 - hd * hd, 0.0, 1.0) * heel_on)
+				a_map[y * w + x] = a
+		# Отпечатки: ладонь сбоку от следа (кусок 2), ступни (кусок 4), капли у края (все)
+		if k == 1:
+			_stamp_hand(a_map, w, h, Vector2(51.0, 96.0), 0.35)
+		if k == 3:
+			_stamp_ellipse(a_map, w, h, Vector2(13.0, 70.0), Vector2(3.2, 7.0), 0.2, 0.8)
+			_stamp_ellipse(a_map, w, h, Vector2(52.0, 168.0), Vector2(3.2, 7.0), -0.25, 0.8)
+		for i in 7:
+			var at := Vector2(rng.randf_range(4.0, w - 4.0), rng.randf_range(6.0, h - 6.0))
+			_stamp_ellipse(a_map, w, h, at, Vector2(rng.randf_range(0.8, 1.8), rng.randf_range(1.0, 3.0)), 0.0, 0.9)
+		for y in h:
+			for x in w:
+				var a: float = a_map[y * w + x]
+				var grain := float(hash(Vector3i(x, y, seed)) % 100) / 99.0
+				var col := edge.lerp(core, smoothstep(0.3, 0.95, a * 1.25)) * (0.85 + 0.3 * grain)
+				var on := a * 1.7 > (float(bayer[(y % 4) * 4 + x % 4]) + 0.5) / 16.0 + 0.1
+				img.set_pixel(k * w + x, y, Color(col.r, col.g, col.b, 1.0 if on else 0.0))
+	return ImageTexture.create_from_image(img)
+
+
+## Пятно-эллипс в карту плотности (center и radius — в пикселях, rot — рад).
+static func _stamp_ellipse(a_map: PackedFloat32Array, w: int, h: int, center: Vector2, radius: Vector2, rot: float,
+		amount: float) -> void:
+	var r := ceili(maxf(radius.x, radius.y)) + 1
+	for y in range(maxi(0, int(center.y) - r), mini(h, int(center.y) + r + 1)):
+		for x in range(maxi(0, int(center.x) - r), mini(w, int(center.x) + r + 1)):
+			var p := (Vector2(x + 0.5, y + 0.5) - center).rotated(-rot) / radius
+			var a := clampf(1.0 - p.length_squared(), 0.0, 1.0) * amount
+			a_map[y * w + x] = maxf(a_map[y * w + x], a)
+
+
+## Отпечаток ладони: пятно, четыре пальца веером и большой палец (опёрся, пока тащили).
+static func _stamp_hand(a_map: PackedFloat32Array, w: int, h: int, at: Vector2, rot: float) -> void:
+	_stamp_ellipse(a_map, w, h, at, Vector2(4.2, 4.8), rot, 0.75)
+	for i in 4:
+		var ang := rot + (i - 1.5) * 0.24
+		var tip := at + Vector2(sin(ang), -cos(ang)) * 9.5
+		_stamp_ellipse(a_map, w, h, tip, Vector2(1.3, 3.6), ang, 0.7)
+	var th := rot - 1.15
+	_stamp_ellipse(a_map, w, h, at + Vector2(sin(th), -cos(th)) * 6.5, Vector2(1.4, 3.0), th, 0.7)
+
+
+## Кусок следа волочения: лента 0,6 × 2,4 м на плитах, длинной стороной вдоль Z, резана на клетки по 0,6 м
+## (чтобы текстура не плыла); variant — какой из четырёх рисунков.
+static func _trail_mesh(variant: int) -> Mesh:
+	var st := SurfaceTool.new()
+	st.begin(Mesh.PRIMITIVE_TRIANGLES)
+	var hw := TRAIL_SIZE.x * 0.5
+	var hl := TRAIL_SIZE.y * 0.5
+	var u0 := (variant + 0.5 / TRAIL_TEX.x) / TRAIL_VARIANTS
+	var u1 := (variant + 1.0 - 0.5 / TRAIL_TEX.x) / TRAIL_VARIANTS
+	var n := 4
+	for i in n:
+		var v0 := float(i) / n
+		var v1 := float(i + 1) / n
+		var z0 := lerpf(-hl, hl, v0)
+		var z1 := lerpf(-hl, hl, v1)
+		var quad := [[Vector3(-hw, 0.012, z0), Vector2(u0, v0)], [Vector3(hw, 0.012, z0), Vector2(u1, v0)],
+			[Vector3(hw, 0.012, z1), Vector2(u1, v1)], [Vector3(-hw, 0.012, z1), Vector2(u0, v1)]]
+		for j: int in [0, 1, 2, 0, 2, 3]:
+			st.set_normal(Vector3.UP)
+			st.set_uv(quad[j][1])
+			st.add_vertex(quad[j][0])
+	return st.commit()
+
+
+static func _make_blood_trail_1() -> Mesh:
+	return _trail_mesh(0)
+
+
+static func _make_blood_trail_2() -> Mesh:
+	return _trail_mesh(1)
+
+
+static func _make_blood_trail_3() -> Mesh:
+	return _trail_mesh(2)
+
+
+static func _make_blood_trail_4() -> Mesh:
+	return _trail_mesh(3)
 
 
 ## Окровавленный камень с кулак-два: им били. Тёмное пятно под ним и на нём.

@@ -23,7 +23,7 @@ func _ready() -> void:
 	for kind in PropLibrary.KINDS:
 		var mi := MeshInstance3D.new()
 		mi.mesh = PropLibrary.mesh(kind)
-		mi.material_override = PropLibrary.material()
+		mi.material_override = PropLibrary.material_for(kind)
 		mi.position = Vector3((i % COLUMNS) * STEP, 0.0, (i / COLUMNS) * STEP)
 		add_child(mi)
 		_add_hero(mi.position + HERO_OFFSET, hero_meshes)

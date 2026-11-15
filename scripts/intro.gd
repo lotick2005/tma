@@ -1,8 +1,8 @@
 class_name Intro
 extends Node
-## Вступление уровня 1 (CLAUDE.md §2): утро на площади A, толпа, свободной ходьбы нет —
-## вестник прибегает через free_time_min…max (3–5) секунд (или раньше, если герой дошёл до точки под аркой) → катсцена
-## data/cutscenes/intro.gd: вестник → паника → героя сбивают с ног → без сознания → очнулся во тьме.
+## Вступление уровня 1 (CLAUDE.md §2): утро на площади A, толпа, свободной ходьбы нет — катсцена
+## data/cutscenes/intro.gd начинается сразу, с первого кадра после «Кликни, чтобы начать»:
+## общий план площади → вестник → паника → героя сбивают с ног → без сознания → очнулся во тьме.
 ## Данные — INTRO в data/level_1_western_street.gd.
 ## Создаёт уровень (western_street.gd), только если GameState.intro_done ещё false.
 ## Отладка (tma/debug/keys): клавиша 4 — пропустить вступление (сразу во тьму).
@@ -34,9 +34,6 @@ var _barrier: StaticBody3D
 var _panic_on := false
 var _blackout_on := false
 var _ring: AudioStreamPlayer
-var _timer := 0.0
-var _limit := 75.0
-var _trigger := Vector3.ZERO
 var _debug_keys := false
 ## Дневные предметы, которые опрокидывают в панике: имя → {pivot: Node3D, body: StaticBody3D, kind}.
 var _day_props := {}
@@ -71,8 +68,6 @@ func setup(level: Node3D, data: Dictionary, player: Player) -> void:
 	_d = data
 	_player = player
 	_debug_keys = ProjectSettings.get_setting("tma/debug/keys", false)
-	_limit = randf_range(data.free_time_min, data.free_time_max)
-	_trigger = level.map_point(data.trigger)
 
 	_crowd = Crowd.new()
 	_crowd.name = "Crowd"
@@ -155,13 +150,9 @@ func _unhandled_input(event: InputEvent) -> void:
 		skip()
 
 
-func _process(delta: float) -> void:
-	if state != State.FREE:
-		return
-	_timer += delta
-	var flat := _player.global_position - _trigger
-	flat.y = 0.0
-	if _timer >= _limit or flat.length() < float(_d.trigger_radius):
+## Первый же кадр игры (после клика дерево снимается с паузы) — катсцена.
+func _process(_delta: float) -> void:
+	if state == State.FREE:
 		_start()
 
 
@@ -257,7 +248,8 @@ func panic() -> void:
 	var crush := []
 	for c: Array in _d.crush:
 		crush.append([_level.map_point(Vector2(c[0], c[1])), c[2]])
-	# Кто спотыкается: каждый третий из тех, кто не падает и не пробегает мимо героя
+	# Кто спотыкается: каждый третий из тех, кто не падает и не пробегает мимо героя (каждого третьего из них
+	# не просто заносит — его толкают, разворачивает: shoved_spin)
 	var stumblers := {}
 	for i in _crowd.count():
 		if stumblers.size() < int(_d.stumblers) and not fallen.has(i) and not passers.has(i) and i % 3 == 1:
@@ -296,7 +288,7 @@ func panic() -> void:
 			if exit_name == "doors":
 				var doors: Array = exits.doors
 				var door: Vector2 = doors[0] if float(ce[0]) < -5.0 else doors[1]
-				route.append(_level.map_point(door) + Vector3(rng.randf_range(-0.6, 0.6), 0.0, 0.0))
+				route.append(_level.map_point(door) + Vector3(rng.randf_range(-1.6, 1.6), 0.0, rng.randf_range(-0.9, 0.0)))
 				end = "bang"
 			else:
 				for p: Vector2 in exits[exit_name]:
@@ -304,9 +296,20 @@ func panic() -> void:
 			# Не пробегающие мимо героя — в давке у выходов толкаются; кто-то спотыкается; кто ждал дольше — сжался
 			if not passers.has(i):
 				opts = {"crush": crush, "crush_anim": "push_walk" if i % 2 == 0 else "walk_shoved",
-					"cower": delay > 1.5 and i % 3 == 0}
+					"cower": delay > 1.5 and i % 3 == 0,
+					"bang_anim": ["terrified", "scared_cower", "cover_peek"][i % 3]}
+				# Пока не побежал: кого-то толкнули, кто-то прижался и выглядывает, кто-то оцепенел
+				if delay > 0.9 and i % 4 != 0:
+					opts.wait_anim = ["shoved", "cover_peek", "idle_defeated", "look_nervous", "shoved"][i % 5]
 				if stumblers.has(i):
 					opts.stumble_at = stumblers[i]
+					if stumblers.size() % 3 == 0 or i % 9 == 4:
+						opts.stumble_anim = "shoved_spin"
+			# Молился на коленях — сначала встаёт
+			if String(ce[3]) == "kneel":
+				delay = maxf(delay, 1.7)
+				opts.wait_anim = "kneel_stand_up"
+				opts.wait_speed = 1.6
 		_crowd.flee(i, route, speed, delay, end, opts)
 	if _barrier and is_instance_valid(_barrier):
 		_barrier.queue_free()
