@@ -1,19 +1,24 @@
 class_name Crowd
 extends Node3D
-## Толпа вступления (уровень 1, площадь A): 20–30 горожан на моделях Meshy со скелетом Mixamo (CharacterModel),
+## Толпа вступления (уровень 1, площадь A): 40–50 горожан на моделях Meshy со скелетом Mixamo (CharacterModel),
 ## живые мокап-анимации. Поведение:
 ##  • stand — стоит (idle, иногда idle_old), иногда поворачивается;
 ##  • wander — бродит вокруг своего места (радиус wander_radius), останавливается (walk_calm / walk);
-##  • sing — поёт: молится стоя (pray_stand), лицом к Храму.
+##  • trade — торгуется у лотка: стоит и время от времени жестикулирует (point, look_around);
+##  • молятся лицом к Храму (поворот — в данных): sing — стоя (pray_stand), bow — склонившись (pray_bow),
+##    kneel — на коленях (pray_kneel).
 ## set_wailing(true) — «песни в плач» (Ам 8:10): все в ужасе (terrified), часть опускается на колени.
 ## play_person(i, анимация) — любая анимация человеку (для катсцен: shoved, fall_flat, run…).
 ## alert() — вестник бежит и кричит: часть людей оглядывается (look_around, look_around_back).
 ## flee(i, путь, скорость, задержка, конец, opts) — паника (вступление, этап 4в): кто срывается сразу — в ужасе
-## (terrified), кто не побежал сразу — нервно озирается (look_nervous) или сжимается (scared_cower);
+## (terrified), кто не побежал сразу — нервно озирается (look_nervous), сжимается (scared_cower) или играет
+## opts.wait_anim (shoved — его толкнули, cover_peek — прижался и выглядывает, idle_defeated — оцепенел,
+## kneel_stand_up — встаёт с колен);
 ## потом бежит по точкам (run / run_fast). В давке (opts.crush — у выходов с площади) — толкается и идёт
-## (walk_shoved / push_walk); opts.stumble_at — на этом метре пути спотыкается (stumble). В конце — "hide"
-## (убежал, пропал из виду), "fall" (падает анимацией opts.fall_anim и остаётся лежать — затоптан),
-## "bang" (добежал до двери и бьётся в неё).
+## (walk_shoved / push_walk); opts.stumble_at — на этом метре пути спотыкается (opts.stumble_anim: stumble или
+## shoved_spin — толкнули, развернуло). В конце — "hide" (убежал, пропал из виду), "fall" (падает анимацией
+## opts.fall_anim и остаётся лежать — затоптан), "bang" (добежал до двери и бьётся в неё; opts.bang_anim —
+## что делает у двери: terrified, scared_cower, cover_peek).
 ## Коллизия — цилиндр на каждого (герой не проходит сквозь людей), двигается вместе с ним.
 ## Дальние обновляют анимацию реже (LOD_*): каждый человек — 1 вызов отрисовки, скиннинг — главная цена.
 
@@ -33,6 +38,11 @@ const ALERT_SHARE := 0.6
 const ALERT_DELAY := Vector2(0.6, 4.0)
 ## Паника: кто ждёт дольше этого (с), не в ужасе на месте, а озирается или сжимается.
 const WAIT_CALM := 0.6
+## Кто молится (их крик вестника не отвлекает) и чем: поведение → анимация.
+const PRAY := {"sing": "pray_stand", "bow": "pray_bow", "kneel": "pray_kneel"}
+## Торгуется: раз в столько секунд — жест (point или look_around) на столько секунд.
+const TRADE_GAP := Vector2(3.0, 8.0)
+const TRADE_GESTURE := Vector2(2.2, 3.4)
 
 ## Плач: 0 — нет, 1 — в полную силу (плавно).
 var wailing := 0.0
@@ -109,7 +119,7 @@ func count() -> int:
 ## Вестник бежит и кричит: часть стоящих и бродящих (не поющие) через ALERT_DELAY секунд начинает оглядываться.
 func alert() -> void:
 	for p in _people:
-		if p.do != "sing" and _rng.randf() < ALERT_SHARE:
+		if not PRAY.has(p.do) and _rng.randf() < ALERT_SHARE:
 			p.alert_in = _rng.randf_range(ALERT_DELAY.x, ALERT_DELAY.y)
 
 
@@ -137,13 +147,22 @@ func flee(i: int, route: PackedVector3Array, speed: float, delay: float, end := 
 	p.flee = {"route": route, "at": 0, "speed": speed, "delay": delay, "end": end, "done": false,
 		"crush": opts.get("crush", []), "crush_anim": opts.get("crush_anim", "walk_shoved"),
 		"stumble_at": float(opts.get("stumble_at", -1.0)), "ran": 0.0, "stumble": 0.0,
+		"stumble_anim": opts.get("stumble_anim", "stumble"), "bang_anim": opts.get("bang_anim", "terrified"),
 		"fall_anim": opts.get("fall_anim", "fall_flat"), "fall_yaw": opts.get("fall_yaw", null)}
 	p.forced = ""
 	p.erase("alert_in")
 	if p.has("shape"):
 		(p.shape as CollisionShape3D).disabled = true
 	var m: CharacterModel = p.model
-	if delay < WAIT_CALM:
+	var wait_anim: String = opts.get("wait_anim", "")
+	if wait_anim != "" and delay >= WAIT_CALM:
+		# Разовые (встаёт с колен, толкнули) — с начала; циклы — со случайного места
+		var once := wait_anim in ["kneel_stand_up", "shoved"]
+		m.play(wait_anim, 0.3, float(opts.get("wait_speed", 1.0)), once)
+		p.anim = wait_anim
+		if not once:
+			m.randomize_phase(_rng)
+	elif delay < WAIT_CALM:
 		_set_anim(p, "terrified", 0.3, _rng.randf_range(1.0, 1.4))
 		m.randomize_phase(_rng)
 	elif opts.get("cower", false):
@@ -169,11 +188,9 @@ func _process(delta: float) -> void:
 
 
 func _idle_anim(p: Dictionary) -> String:
-	match p.do:
-		"sing":
-			return "pray_stand"
-		_:
-			return "idle_old" if int(p.variant) == 3 else "idle"
+	if PRAY.has(p.do):
+		return PRAY[p.do]
+	return "idle_old" if int(p.variant) == 3 else "idle"
 
 
 func _set_anim(p: Dictionary, anim_name: String, blend: float, speed := 1.0) -> void:
@@ -220,14 +237,26 @@ func _update(delta: float) -> void:
 							p.pos += to.normalized() * minf(wander_speed * delta, to.length())
 							p.turn = atan2(-to.x, -to.z)
 							moving = true
-				"sing":
+				"sing", "bow", "kneel":
 					pass
+				"trade":
+					# Торгуется: жест — и снова стоит
+					p.wait -= delta
+					if p.wait <= 0.0:
+						if p.get("gesture", "") == "":
+							p.gesture = "point" if _rng.randf() < 0.6 else "look_around"
+							p.wait = _rng.randf_range(TRADE_GESTURE.x, TRADE_GESTURE.y)
+						else:
+							p.gesture = ""
+							p.wait = _rng.randf_range(TRADE_GAP.x, TRADE_GAP.y)
 				_:
 					p.wait -= delta
 					if p.wait <= 0.0:
 						p.wait = _rng.randf_range(4.0, 10.0)
 						p.turn = p.yaw + _rng.randf_range(-0.8, 0.8)
 			var want := "walk_calm" if moving else _idle_anim(p)
+			if p.get("gesture", "") != "":
+				want = p.gesture
 			if p.anim != want:
 				_set_anim(p, want, 0.35, Anims.scale_for(want, wander_speed) if moving else 1.0)
 		p.yaw = lerp_angle(p.yaw, p.turn, 1.0 - exp(-3.0 * delta))
@@ -286,9 +315,10 @@ func _update_flee(p: Dictionary, delta: float) -> void:
 		if f.stumble_at >= 0.0 and f.ran >= f.stumble_at and crush == "":
 			f.stumble_at = -1.0
 			m.reset_motion()
-			m.play("stumble", 0.15, 1.15, true)
-			p.anim = "stumble"
-			f.stumble = Anims.library().get_animation("stumble").length / 1.15 - 0.25
+			var sa: String = f.stumble_anim
+			m.play(sa, 0.15, 1.15, true)
+			p.anim = sa
+			f.stumble = Anims.library().get_animation(sa).length / 1.15 - 0.25
 			return
 		var a := crush
 		if a == "":
@@ -307,7 +337,7 @@ func _update_flee(p: Dictionary, delta: float) -> void:
 			m.play(f.fall_anim, 0.15, 1.0, true)
 			fell.emit(m.global_position, f.fall_anim)
 		"bang":
-			_set_anim(p, "terrified", 0.2, 1.5)
+			_set_anim(p, f.bang_anim, 0.25, 1.5 if f.bang_anim == "terrified" else 1.0)
 			m.randomize_phase(_rng)
 		_:
 			m.visible = false

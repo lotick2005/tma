@@ -153,51 +153,78 @@ func _build_aftermath(props: QuarterProps, split: Dictionary) -> void:
 	_after_b.body.process_mode = Node.PROCESS_MODE_DISABLED
 
 
-## Полосы волочения (DRAG_TRAILS) — в строки формата PROPS: кусок каждые 2,4 м вдоль ломаной, длинной осью по ходу.
+## Полосы волочения (DRAG_TRAILS) — в строки формата PROPS: кусок следа каждые 2,4 м вдоль ломаной, длинной осью
+## по ходу. Рисунок куска (blood_trail_1…4) — по очереди вперемешку, каждый шестой кусок пропущен (след рвётся),
+## куски чуть гуляют вбок. "blood_trail_wide" — тащили двоих: два следа рядом, со сдвигом вдоль и разными рисунками.
 ## На ступенях террас (земля в начале и в конце куска на разной высоте) кусков нет.
 func _trail_props() -> Array:
 	var out := []
-	var step := 2.4
+	var step := PropLibrary.TRAIL_SIZE.y
 	var n := 0
 	for trail: Array in D.DRAG_TRAILS:
 		var pts: Array = trail[1]
-		for i in pts.size() - 1:
-			var a: Vector2 = pts[i]
-			var b: Vector2 = pts[i + 1]
-			var length := a.distance_to(b)
-			var count := maxi(1, roundi(length / step))
-			var dir := (b - a) / length
-			for k in count:
-				var mid := a + dir * (length * (k + 0.5) / count)
-				var r0 := clampi(floori(mid.y - dir.y * step * 0.5), 0, _quarter.h - 1)
-				var r1 := clampi(floori(mid.y + dir.y * step * 0.5), 0, _quarter.h - 1)
-				if not is_equal_approx(_quarter.ground[r0], _quarter.ground[r1]):
-					continue
-				n += 1
-				var c := floori(mid.x)
-				var r := floori(mid.y)
-				# Локальная −Z куска — по ходу волочения; через один — задом наперёд, чтобы рисунок не повторялся
-				var yaw := rad_to_deg(atan2(-dir.x, -dir.y)) + (180.0 if n % 2 == 0 else 0.0)
-				out.append([trail[0], c, r, yaw, mid.x - c - 0.5, mid.y - r - 0.5, 0.0, 1.0])
+		var lanes := [-0.2, 0.22] if trail[0] == "blood_trail_wide" else [0.0]
+		for lane_i in lanes.size():
+			for i in pts.size() - 1:
+				var a: Vector2 = pts[i]
+				var b: Vector2 = pts[i + 1]
+				var length := a.distance_to(b)
+				var count := maxi(1, roundi(length / step))
+				var dir := (b - a) / length
+				var side := Vector2(-dir.y, dir.x)
+				for k in count:
+					n += 1
+					var h := hash(Vector3i(n, lane_i, 71))
+					if h % 6 == 0 and count > 1:
+						continue
+					var along := (k + 0.5 + (0.35 if lane_i == 1 else 0.0)) / count
+					if along > 1.0:
+						continue
+					var mid := a + dir * (length * along) + side * (float(lanes[lane_i]) + (float(h / 7 % 100) / 99.0 - 0.5) * 0.12)
+					var r0 := clampi(floori(mid.y - dir.y * step * 0.5), 0, _quarter.h - 1)
+					var r1 := clampi(floori(mid.y + dir.y * step * 0.5), 0, _quarter.h - 1)
+					if not is_equal_approx(_quarter.ground[r0], _quarter.ground[r1]):
+						continue
+					var c := floori(mid.x)
+					var r := floori(mid.y)
+					# Локальная −Z куска — по ходу волочения
+					var yaw := rad_to_deg(atan2(-dir.x, -dir.y))
+					var kind := "blood_trail_%d" % (1 + (h / 700) % PropLibrary.TRAIL_VARIANTS)
+					out.append([kind, c, r, yaw, mid.x - c - 0.5, mid.y - r - 0.5, 0.0, 1.0])
 	return out
 
 
-## Подвал, куда сложили мёртвых (DEAD_CELLAR): тела рядами на полу подвала, по вариантам — MultiMesh.
+## Подвал, куда сложили мёртвых (DEAD_CELLAR): тела свалены грудой друг на друга — слоями, каждый слой выше и теснее
+## к середине, тела повёрнуты как попало и лежат неровно (наклон). По видам — MultiMesh.
 func _build_dead_cellar() -> void:
 	var dc: Dictionary = D.DEAD_CELLAR
 	var kinds: Array = dc.kinds
+	var heap: Dictionary = dc.heap
+	var rng := RandomNumberGenerator.new()
+	rng.seed = heap.seed
+	var center: Vector2 = heap.center
+	var half: Vector2 = heap.half
+	var floor_y: float = _quarter.ground[floori(center.y)] - D.QUARTER.basement_depth
+	var layers: Array = heap.layers
 	var n := 0
 	_b.layer = LevelBuilder.INTERIOR_LAYER
-	for row: Array in dc.rows:
-		for i in int(row[2]):
-			var x: float = _quarter.x0 + row[0] + float(row[3]) * i
-			var z: float = _quarter.z0 + row[1]
-			var y: float = _quarter.ground[floori(row[1])] - D.QUARTER.basement_depth
+	for li in layers.size():
+		var count: int = layers[li]
+		# Верхние слои — ближе к середине
+		var shrink := 1.0 - 0.3 * li
+		for i in count:
+			# По кругу с разбросом: тела не ложатся точно друг на друга
+			var ang := TAU * (i + rng.randf_range(-0.3, 0.3)) / count + li * 0.7
+			var rad := sqrt(rng.randf_range(0.08, 1.0)) * shrink
+			var x := _quarter.x0 + center.x + cos(ang) * rad * half.x
+			var z := _quarter.z0 + center.y + sin(ang) * rad * half.y
 			var kind: String = kinds[n % kinds.size()]
 			n += 1
-			# Чуть неровно: клали руками
-			var yaw := deg_to_rad(row[4]) + sin(n * 12.9898) * 0.06
-			var xf := Transform3D(Basis(Vector3.UP, yaw), Vector3(x, y, z + cos(n * 78.233) * 0.05))
+			var tilt := deg_to_rad(float(heap.tilt)) * (0.25 if li == 0 else 1.0)
+			var basis := Basis(Vector3.UP, rng.randf() * TAU) \
+				* Basis(Vector3.RIGHT, rng.randf_range(-tilt, tilt)) * Basis(Vector3.BACK, rng.randf_range(-tilt, tilt))
+			var y := floor_y + float(heap.layer_height) * li * rng.randf_range(0.85, 1.1)
+			var xf := Transform3D(basis, Vector3(x, y, z))
 			PropRegistry.add(kind, xf)
 			_b.add_instance(Corpses.mesh(kind), xf, Corpses.material(kind))
 	_b.layer = 1
@@ -774,6 +801,10 @@ func _build_houses() -> void:
 		var e: Array = D.PLAZA_HOUSES[i]
 		_house(WorldCoords.gx(e[0]), WorldCoords.gx(e[1]), WorldCoords.gz(e[3]), WorldCoords.gz(e[2]), e[4],
 			_m.plaster_a if i % 2 else _m.plaster_b, Vector3.FORWARD, i + 100)
+	# Стены по краям площади: за ними не видно пустоты за краем мостовой
+	for e: Array in D.PLAZA_WALLS:
+		_b.box_between(Vector3(WorldCoords.gx(e[0]), _plaza_y - SINK, WorldCoords.gz(e[2])),
+			Vector3(WorldCoords.gx(e[1]), _plaza_y + e[4], WorldCoords.gz(e[3])), _m[e[5]], 4.0, true, PsxMesh.FACE_BOTTOM, 2.0)
 	for i in D.BACKDROP.size():
 		var e: Array = D.BACKDROP[i]
 		var z_s := WorldCoords.gz(e[2])
