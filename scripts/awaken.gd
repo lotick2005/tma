@@ -128,6 +128,12 @@ func pass_out(player: Player) -> void:
 	blacked_out.emit()
 	if respawn_handler.is_valid():
 		respawn_handler.call()
+	# Очнулся отдохнувшим: выносливость полная, одышки и частого дыхания нет
+	player.stamina = player.stamina_max
+	player.set("_exhausted", false)
+	var hero_audio := player.get_node_or_null("Audio") as HeroAudio
+	if hero_audio:
+		hero_audio.reset()
 	player.set_lamp(false, true)
 	player.crouch(true)
 	player.set_look(player.get_look().x, -0.75)
@@ -179,7 +185,10 @@ func wake(player: Player) -> void:
 	await _wait(0.5)
 	player.set_locked(false)
 	woke_up.emit()
-	await blur_tw.finished
+	# Муть обычно уже сошла, пока он вставал: ждать finished у доигравшего твина нельзя — он не придёт никогда,
+	# и busy в pass_out остался бы true навсегда (вторая поимка не срабатывала, святой замирал в CATCH)
+	if blur_tw.is_running():
+		await blur_tw.finished
 	_blur.visible = false
 
 

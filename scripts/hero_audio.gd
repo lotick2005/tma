@@ -107,6 +107,20 @@ func _make_players() -> void:
 	add_child(_heart)
 
 
+## Сбросить дыхание и сердце (после «очнулся», Awaken.pass_out): ни одышки, ни частого дыхания.
+func reset() -> void:
+	run_time = 0.0
+	tired = 0.0
+	_was_running = false
+	_breath_mode = Breath.NONE
+	_breath_wait = 0.0
+	_heart_timer = 0.0
+	if _breath:
+		_breath.stop()
+	if _heart:
+		_heart.stop()
+
+
 # ─── Бег и одышка ────────────────────────────────────────────────────────────
 
 func _update_exertion(delta: float) -> void:
