@@ -34,7 +34,11 @@ func report_threat(from: Vector3, amount: float, radius := 20.0, source: Object 
 	var value := clampf(amount, 0.0, 1.0) * clampf(1.0 - d / maxf(radius, 0.01), 0.0, 1.0)
 	var key: Variant = source.get_instance_id() if source else _reports.size() + 100000
 	var old: Array = _reports.get(key, [0.0, 0.0])
-	_reports[key] = [maxf(value, old[0] if old[1] > 0.0 else 0.0), REPORT_HOLD]
+	# У врага с source угроза обновляется (иначе, раз он сообщает каждый кадр, она только росла бы и не падала
+	# никогда: вечное частое дыхание и сердце после первой же погони); без source — держится наибольшая
+	if source == null:
+		value = maxf(value, old[0] if old[1] > 0.0 else 0.0)
+	_reports[key] = [value, REPORT_HOLD]
 
 
 ## Где слушатель (камера), для расстояний.

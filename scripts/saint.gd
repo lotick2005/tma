@@ -139,7 +139,6 @@ var _rustle_every := 2
 var _growl_timer := 4.0
 var _sniff_timer := 3.0
 var _voice_timer := 0.0
-var _threat_timer := 0.0
 var _voice_on := true
 var _voice_mode := "normal"
 var _chant_pitch := 1.0
@@ -536,7 +535,7 @@ func _physics_process(delta: float) -> void:
 	_update_twitch(delta)
 	_update_anim(speed)
 	_update_sounds(delta)
-	_report_threat(delta)
+	_report_threat()
 	if _label.visible:
 		_label.text = STATE_NAMES[state]
 		_label.modulate = [Color.WHITE, Color.WHITE, Color.YELLOW, Color.ORANGE, Color.ORANGE, Color.RED, Color.RED,
@@ -849,14 +848,7 @@ func _update_sounds(delta: float) -> void:
 				AudioManager.play_3d("saint_growl", head_point())
 
 
-## Угроза для ThreatDirector — не каждый кадр, а раз в REPORT_HOLD + 0,1 с. Пока сообщения идут чаще REPORT_HOLD,
-## ThreatDirector держит наибольшее из них и угроза не падает никогда (после первой же погони — вечное частое
-## дыхание и сердце героя, фон в тишине). С паузой прошлое сообщение успевает истечь, и новое его заменяет.
-func _report_threat(delta: float) -> void:
-	_threat_timer -= delta
-	if _threat_timer > 0.0:
-		return
-	_threat_timer = ThreatDirector.REPORT_HOLD + 0.1
+func _report_threat() -> void:
 	match state:
 		State.PRAY, State.WANDER:
 			ThreatDirector.report_threat(global_position, 0.3, 10.0, self)
