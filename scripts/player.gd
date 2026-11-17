@@ -111,7 +111,7 @@ func _unhandled_input(event: InputEvent) -> void:
 		if _orbit and _orbit.current:
 			return
 		# screen_relative — в пикселях экрана, не зависит от растяжения 320×240
-		var d: Vector2 = event.screen_relative * mouse_sensitivity
+		var d: Vector2 = event.screen_relative * mouse_sensitivity * Settings.mouse
 		rotate_y(-d.x)
 		var limit := deg_to_rad(pitch_limit_deg)
 		_head.rotation.x = clampf(_head.rotation.x - d.y, -limit, limit)
