@@ -19,6 +19,11 @@ static func add(kind: String, xf: Transform3D) -> void:
 	_items.append([kind, xf, aabb])
 
 
+## Предмет не из PropLibrary (например, записка — scripts/notes.gd): границы задаются явно.
+static func add_box(kind: String, xf: Transform3D, aabb: AABB) -> void:
+	_items.append([kind, xf, aabb])
+
+
 ## Ближайший предмет на луче from → dir не дальше max_dist; блокирует то, что ближе стены (hit_limit). "" — ничего.
 static func pick(from: Vector3, dir: Vector3, max_dist: float, hit_limit: float = INF) -> String:
 	var best := ""

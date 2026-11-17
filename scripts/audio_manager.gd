@@ -219,7 +219,8 @@ func play_3d(sound_name: String, pos: Vector3, opts := {}) -> SoundEmitter:
 	return em
 
 
-## Разовый звук не из точки (на свою шину из реестра): катсцены, интерфейс. opts: "db" — добавка громкости.
+## Разовый звук не из точки (на свою шину из реестра): катсцены, интерфейс. opts: "db" — добавка громкости,
+## "always" — звучит и на паузе (экран записки, журнал).
 func play_2d(sound_name: String, opts := {}) -> AudioStreamPlayer:
 	if not unlocked or int(_playing_2d.get(sound_name, 0)) >= MAX_SAME_2D:
 		return null
@@ -231,6 +232,8 @@ func play_2d(sound_name: String, opts := {}) -> AudioStreamPlayer:
 	p.stream = stream
 	p.bus = e.get("bus", "SFX")
 	p.volume_db = float(e.get("db", 0.0)) + float(opts.get("db", 0.0))
+	if opts.get("always", false):
+		p.process_mode = Node.PROCESS_MODE_ALWAYS
 	p.finished.connect(p.queue_free)
 	_playing_2d[sound_name] = int(_playing_2d.get(sound_name, 0)) + 1
 	p.tree_exiting.connect(func() -> void: _playing_2d[sound_name] = maxi(int(_playing_2d.get(sound_name, 1)) - 1, 0))

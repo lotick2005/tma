@@ -106,6 +106,9 @@ const _POT_WOBBLE := [
 const _STONE_DROP := [
 	"res://audio/stone_drop_01.ogg", "res://audio/stone_drop_02.ogg", "res://audio/stone_drop_03.ogg", "res://audio/stone_drop_04.ogg", "res://audio/stone_drop_05.ogg",
 ]
+const _PARCHMENT := [
+	"res://audio/parchment_01.ogg", "res://audio/parchment_02.ogg", "res://audio/parchment_03.ogg", "res://audio/parchment_04.ogg",
+]
 const _WOOD_CLACK := [
 	"res://audio/wood_clack_01.ogg", "res://audio/wood_clack_02.ogg", "res://audio/wood_clack_03.ogg", "res://audio/wood_clack_04.ogg", "res://audio/wood_clack_05.ogg",
 ]
@@ -237,6 +240,8 @@ const SOUNDS := {
 	"pot_wobble": {"file": _POT_WOBBLE, "bus": "SFX", "db": -3.0, "unit": 2.5, "range": 30.0},
 	"stone_drop": {"file": _STONE_DROP, "bus": "SFX", "db": -1.0, "unit": 2.5, "range": 35.0},
 	"wood_clack": {"file": _WOOD_CLACK, "bus": "SFX", "db": -4.0, "unit": 2.5, "range": 30.0},
+	## Записки (этап 5б): шорох свитка при чтении — не из точки (экран записки, play_2d); табличка — wood_clack.
+	"parchment": {"file": _PARCHMENT, "bus": "SFX", "db": -4.0},
 
 	# ─── Ложные тревоги ───────────────────────────────────────────────────────────
 	"alarm_stone_fall": {"synth": "stone_fall", "bus": "SFX", "db": -6.0, "variants": 3, "unit": 3.0, "range": 40.0, "pitch": 0.1},

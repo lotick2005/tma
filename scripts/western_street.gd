@@ -47,6 +47,9 @@ var _saints: Array[Saint] = []
 var _first_saint: Saint
 var _first_scene := false
 var _stealth := false
+## Записки (этап 5б): в мире и экран чтения / журнал.
+var _notes: Notes
+var _notes_ui: NotesUI
 ## Сколько секунд пекся навмеш (для отчёта / отладки).
 var nav_bake_ms := 0
 
@@ -93,6 +96,10 @@ func _ready() -> void:
 	_glows.commit(_geometry)
 	_build_navigation()
 	_place_player()
+	_notes_ui = NotesUI.new()
+	_notes_ui.name = "NotesUI"
+	add_child(_notes_ui)
+	_notes_ui.setup(_player)
 	_setup_audio()
 	# Вступление — днём; если оно уже пройдено, уровень сразу во тьме
 	_is_day = not GameState.intro_done
@@ -300,8 +307,16 @@ func _start_stealth() -> void:
 	for e in D.PHYS_PROPS:
 		var off := Vector3(e[4] if e.size() > 4 else 0.0, 0.0, e[5] if e.size() > 5 else 0.0)
 		_phys.spawn(e[0], cell_point(e[1], e[2]) + off, deg_to_rad(e[3]))
+	_notes = Notes.new()
+	_notes.name = "Notes"
+	add_child(_notes)
+	for e in D.NOTES:
+		var noff := Vector3(e[4] if e.size() > 4 else 0.0, e[6] if e.size() > 6 else 0.0, e[5] if e.size() > 5 else 0.0)
+		_notes.spawn(e[0], cell_point(e[1], e[2]) + noff, deg_to_rad(e[3]), _quarter.cell(e[1], e[2]) in QuarterBuilder.INDOOR)
 	if _player.hands():
 		_player.hands().props = _phys
+		_player.hands().notes = _notes
+		_player.hands().notes_ui = _notes_ui
 	for e in D.SAINTS:
 		var pts := []
 		for c: Vector2i in e[5]:
