@@ -29,6 +29,9 @@ var held_kind := ""
 var held_count := 0
 ## Предметы уровня (ставит уровень).
 var props: PhysProps
+## Записки уровня и экран чтения (этап 5б, ставит уровень): E над запиской — читать, а не брать.
+var notes: Notes
+var notes_ui: NotesUI
 
 var _player: Player
 var _arms: Node3D
@@ -62,7 +65,8 @@ func _unhandled_input(event: InputEvent) -> void:
 	if _player.locked or Input.mouse_mode != Input.MOUSE_MODE_CAPTURED:
 		return
 	if event.is_action_pressed("interact"):
-		try_pick()
+		if not try_read():
+			try_pick()
 	elif event.is_action_pressed("throw"):
 		start_throw()
 	elif event.is_action_released("throw"):
@@ -117,6 +121,25 @@ func _physics_process(delta: float) -> void:
 		k *= float(p.info.get("bump", 1.0))
 		p.bump(dir * k * pow(v.length(), S.BUMP_SPEED_POWER) * pow(p.mass, S.BUMP_MASS_POWER), at)
 	_touching = now
+
+
+# ─── Читать ──────────────────────────────────────────────────────────────────
+
+## E: записка перед собой — открыть экран чтения. Если рядом и предмет, который можно взять, — что ближе.
+func try_read() -> bool:
+	if notes == null or notes_ui == null or _throw != Throw.NONE:
+		return false
+	var cam := _player.eye_camera()
+	var dir := -cam.global_basis.z
+	var n := notes.readable(cam.global_position, dir, [_player.get_rid()])
+	if n.is_empty():
+		return false
+	if props:
+		var p := props.pickable(cam.global_position, dir)
+		if p and p.pick_limit() > 0 and cam.global_position.distance_to(p.global_position) < float(n.dist) - 0.3:
+			return false
+	notes_ui.open_note(n.id)
+	return true
 
 
 # ─── Взять ───────────────────────────────────────────────────────────────────
