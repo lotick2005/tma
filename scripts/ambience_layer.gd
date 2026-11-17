@@ -50,6 +50,10 @@ func start(stream: AudioStream, bus: String, fade: float, random_start := true) 
 
 ## Плавно убрать слой и удалить его.
 func stop(fade: float) -> void:
+	# Ещё не начинал (до клика «Кликни, чтобы начать») — удалить сразу, иначе слой висел бы вечно
+	if _players.is_empty():
+		queue_free()
+		return
 	_target = 0.0
 	_rate = 1.0 / maxf(fade, 0.01)
 

@@ -73,7 +73,7 @@ func _process(delta: float) -> void:
 		var was := floori(_walked / step_len)
 		_walked += moved.length()
 		if floori(_walked / step_len) != was:
-			AudioManager.play_3d("step_stone_run" if running else "step_stone", global_position, {"db": 8.0})
+			AudioManager.play_3d("step_stone_run" if running else "step_stone", global_position)
 	_update_anim()
 
 

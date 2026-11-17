@@ -41,6 +41,8 @@ var _base_db := 0.0
 var _range := 30.0
 var _active := true
 var _debug_mesh: MeshInstance3D
+var _fade: Tween
+var _fade_keep := 0.0
 
 
 func setup(entry: Dictionary, reverb: bool) -> void:
@@ -50,7 +52,7 @@ func setup(entry: Dictionary, reverb: bool) -> void:
 	if reverb:
 		twin = _make_player(entry, "Reverb_None", 1 << (ZONE_LAYER - 1))
 	main.finished.connect(_on_finished)
-	_apply()
+	apply()
 
 
 func _make_player(entry: Dictionary, bus: String, area_mask: int) -> AudioStreamPlayer3D:
@@ -85,6 +87,13 @@ func set_stream(stream: AudioStream) -> void:
 
 ## Включить / выключить постоянный источник (например, птицы только днём). До клика только запоминает.
 func set_active(on: bool) -> void:
+	# Включили или выключили посреди fade_out: затухание отменяется, громкость — прежняя
+	# (иначе твин доигрывал и выключал источник, который только что включили)
+	if _fade and _fade.is_valid():
+		_fade.kill()
+		_fade = null
+		volume_db = _fade_keep
+		apply()
 	_active = on
 	if on:
 		resume()
@@ -107,15 +116,20 @@ func resume() -> void:
 func fade_out(time: float) -> void:
 	if not _active:
 		return
+	if _fade and _fade.is_valid():
+		return
 	var keep := volume_db
+	_fade_keep = keep
 	var tw := create_tween()
+	_fade = tw
 	var set_db := func(db: float) -> void:
 		volume_db = db
-		_apply()
+		apply()
 	var done := func() -> void:
+		_fade = null
 		set_active(false)
 		volume_db = keep
-		_apply()
+		apply()
 	tw.tween_method(set_db, keep, keep - 50.0, maxf(time, 0.01)).set_ease(Tween.EASE_IN)
 	tw.tween_callback(done)
 
@@ -125,7 +139,14 @@ func set_muffled() -> void:
 	occlude = false
 	occlusion = 1.0
 	occlusion_target = 1.0
-	_apply()
+	apply()
+
+
+## Перескочить на другое место петли — оба плеера вместе (иначе эхо поёт другое место, чем сам звук).
+func seek(to: float) -> void:
+	for p in _players():
+		if p.playing:
+			p.seek(to)
 
 
 func is_active() -> bool:
@@ -154,14 +175,15 @@ func _players() -> Array[AudioStreamPlayer3D]:
 func _process(delta: float) -> void:
 	if occlusion != occlusion_target:
 		occlusion = move_toward(occlusion, occlusion_target, delta / OCCLUSION_FADE)
-		_apply()
+		apply()
 	if _debug_mesh:
 		var mat := _debug_mesh.material_override as StandardMaterial3D
 		mat.albedo_color = Color(0.2, 1.0, 0.3).lerp(Color(1.0, 0.2, 0.2), occlusion)
 		_debug_mesh.visible = _active
 
 
-func _apply() -> void:
+## Пересчитать громкость и фильтр плееров (после смены volume_db, occlusion снаружи).
+func apply() -> void:
 	var db := _base_db + volume_db + OCCLUDED_DB * occlusion
 	var cutoff := lerpf(CUTOFF_CLEAR, CUTOFF_OCCLUDED, occlusion)
 	var filter_db := lerpf(FILTER_DB_CLEAR, FILTER_DB_OCCLUDED, occlusion)

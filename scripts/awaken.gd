@@ -34,6 +34,8 @@ var _top: ColorRect
 var _bottom: ColorRect
 var _blur: ColorRect
 var _shake := 0.0
+## Дыхание борьбы (play_2d): в черноте затихает.
+var _struggle_breath: AudioStreamPlayer
 
 
 func _ready() -> void:
@@ -79,7 +81,7 @@ func caught_by_saint(saint: Saint, player: Player) -> void:
 	var from := player.get_look()
 	AudioManager.play_3d("grab", saint.head_point(), {"db": 2.0})
 	AudioManager.play_2d("struggle")
-	AudioManager.play_2d("breath_struggle")
+	_struggle_breath = AudioManager.play_2d("breath_struggle")
 	player.arms().set_struggle(true)
 	var tw := create_tween()
 	tw.tween_method(func(k: float) -> void:
@@ -118,6 +120,15 @@ func pass_out(player: Player) -> void:
 	for b in MUFFLE_BUSES:
 		AudioManager.set_bus_muffled(b, true, MUFFLE_CUTOFF)
 	AudioManager.play_2d("body_fall", {"db": -4.0})
+	# Дыхание борьбы (8 с) длиннее самой борьбы: в черноте оно затихает, а не дышит дальше поверх «очнулся»
+	if _struggle_breath and is_instance_valid(_struggle_breath):
+		var breath := _struggle_breath
+		var fade := create_tween()
+		fade.tween_property(breath, "volume_db", breath.volume_db - 40.0, 0.8)
+		fade.tween_callback(func() -> void:
+			if is_instance_valid(breath):
+				breath.queue_free())
+	_struggle_breath = null
 	var tw := create_tween()
 	tw.tween_property(_black, "color:a", 1.0, 0.45)
 	await tw.finished
