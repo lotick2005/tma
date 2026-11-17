@@ -424,6 +424,7 @@ func _silence() -> void:
 	AudioManager.clear_layer("panic", 0.05)
 	AudioManager.clear_layer("stampede", 0.05)
 	AudioManager.set_bus_muffled("Ambience", false)
+	AudioManager.stop_one_shots()
 	if _ring and is_instance_valid(_ring):
 		_ring.queue_free()
 	_ring = null

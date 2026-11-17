@@ -787,7 +787,7 @@ func _set_em(em: SoundEmitter, on: bool, db := 0.0, pitch := 1.0) -> void:
 		em.main.pitch_scale = pitch
 		if em.twin:
 			em.twin.pitch_scale = pitch
-		em._apply()
+		em.apply()
 		if not em.is_active() or not em.is_playing():
 			em.set_active(true)
 	elif em.is_active():
@@ -816,7 +816,7 @@ func _update_sounds(delta: float) -> void:
 					if randf() < 0.55:
 						_set_em(_chant, true, chant_search_db, _chant_pitch * randf_range(0.97, 1.0))
 						if _chant and _chant.is_playing():
-							_chant.main.seek(randf() * 40.0)
+							_chant.seek(randf() * 40.0)
 					else:
 						_set_em(_mumble, true, -4.0, _chant_pitch)
 				else:
@@ -838,10 +838,7 @@ func _update_sounds(delta: float) -> void:
 			if _voice_timer <= 0.0:
 				_voice_timer = randf_range(1.5, 3.5)
 				if _chant and _chant.is_playing():
-					var at := randf() * 40.0
-					_chant.main.seek(at)
-					if _chant.twin:
-						_chant.twin.seek(at)
+					_chant.seek(randf() * 40.0)
 			_growl_timer -= delta
 			if _growl_timer <= 0.0:
 				_growl_timer = randf_range(growl_min, growl_max)

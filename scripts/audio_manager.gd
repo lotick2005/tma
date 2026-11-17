@@ -27,6 +27,10 @@ const MUTE_FADE := 1.5
 ## Угроза, при которой фон начинает уходить, и при которой он уже в тишине.
 const THREAT_DUCK_FROM := 0.1
 const THREAT_DUCK_TO := 0.7
+## Сколько копий одного разового звука может звучать сразу (3D и не из точки): лишние не запускаются.
+## Толпа из 46 человек шагает одним и тем же step_stone_run — без предела это каша и перегруз.
+const MAX_SAME_3D := 3
+const MAX_SAME_2D := 2
 
 ## Звук разрешён (был клик).
 var unlocked := false
@@ -50,6 +54,9 @@ var _layers := {}
 ## Последний сыгранный вариант каждого звука (чтобы не повторять подряд).
 var _last_variant := {}
 var _emitters: Array[SoundEmitter] = []
+## Сколько копий каждого разового звука звучит сейчас: имя → число (3D и 2D отдельно).
+var _playing_3d := {}
+var _playing_2d := {}
 var _occlusion_timer := 0.0
 var _occlusion_index := 0
 ## Громкость шин, выставленная игроком / панелью, дБ.
@@ -186,7 +193,7 @@ func _unhandled_input(event: InputEvent) -> void:
 ## "reverb_gain" — доля звука в эхо (1 — полностью), "pitch" — своя высота (иначе случайный разброс из реестра).
 ## Разброс громкости ±"db_rand" дБ — из реестра.
 func play_3d(sound_name: String, pos: Vector3, opts := {}) -> SoundEmitter:
-	if not unlocked:
+	if not unlocked or int(_playing_3d.get(sound_name, 0)) >= MAX_SAME_3D:
 		return null
 	var stream := get_stream(sound_name)
 	if stream == null:
@@ -195,8 +202,18 @@ func play_3d(sound_name: String, pos: Vector3, opts := {}) -> SoundEmitter:
 	var em := _make_emitter(sound_name, e, opts)
 	em.one_shot = true
 	em.volume_db += randf_range(-1.0, 1.0) * float(e.get("db_rand", 0.0))
+	_playing_3d[sound_name] = int(_playing_3d.get(sound_name, 0)) + 1
+	em.tree_exiting.connect(func() -> void: _playing_3d[sound_name] = maxi(int(_playing_3d.get(sound_name, 1)) - 1, 0))
 	_scene_root().add_child(em)
 	em.global_position = pos
+	# За стеной — сразу глухо: короткий звук иначе успевал отзвучать в полную силу, пока дойдёт очередь окклюзии
+	if em.occlude:
+		var cam := get_viewport().get_camera_3d()
+		if cam and cam.global_position.distance_to(pos) <= em.hearing_range() and not _line_clear(cam.global_position, pos):
+			em.occlusion = 1.0
+			em.occlusion_target = 1.0
+	# Громкость с разбросом (и окклюзией) — до первого отсчёта, а не при первой смене окклюзии
+	em.apply()
 	var pitch: float = opts.get("pitch", 1.0 + randf_range(-1.0, 1.0) * float(e.get("pitch", 0.0)))
 	em.play_stream(stream, 0.0, pitch)
 	return em
@@ -204,7 +221,7 @@ func play_3d(sound_name: String, pos: Vector3, opts := {}) -> SoundEmitter:
 
 ## Разовый звук не из точки (на свою шину из реестра): катсцены, интерфейс. opts: "db" — добавка громкости.
 func play_2d(sound_name: String, opts := {}) -> AudioStreamPlayer:
-	if not unlocked:
+	if not unlocked or int(_playing_2d.get(sound_name, 0)) >= MAX_SAME_2D:
 		return null
 	var stream := get_stream(sound_name)
 	if stream == null:
@@ -215,6 +232,8 @@ func play_2d(sound_name: String, opts := {}) -> AudioStreamPlayer:
 	p.bus = e.get("bus", "SFX")
 	p.volume_db = float(e.get("db", 0.0)) + float(opts.get("db", 0.0))
 	p.finished.connect(p.queue_free)
+	_playing_2d[sound_name] = int(_playing_2d.get(sound_name, 0)) + 1
+	p.tree_exiting.connect(func() -> void: _playing_2d[sound_name] = maxi(int(_playing_2d.get(sound_name, 1)) - 1, 0))
 	_scene_root().add_child(p)
 	p.play()
 	return p
@@ -234,6 +253,13 @@ func add_emitter(sound_name: String, parent: Node3D, local_pos: Vector3, opts :=
 	em.set_stream(stream)
 	em.set_active(opts.get("active", true))
 	return em
+
+
+## Оборвать все разовые 3D-звуки (пропуск катсцены, «тишина сразу»): крики и удары не доигрывают в новой сцене.
+func stop_one_shots() -> void:
+	for em in _emitters.duplicate():
+		if is_instance_valid(em) and em.one_shot:
+			em.queue_free()
 
 
 func _make_emitter(sound_name: String, e: Dictionary, opts: Dictionary) -> SoundEmitter:
@@ -284,7 +310,11 @@ func _line_clear(from: Vector3, to: Vector3) -> bool:
 	var cam := get_viewport().get_camera_3d()
 	if cam == null:
 		return true
-	var q := PhysicsRayQueryParameters3D.create(from, to, WALL_MASK)
+	var exclude: Array[RID] = []
+	for p in get_tree().get_nodes_in_group("player"):
+		if p is CollisionObject3D:
+			exclude.append((p as CollisionObject3D).get_rid())
+	var q := PhysicsRayQueryParameters3D.create(from, to, WALL_MASK, exclude)
 	return cam.get_world_3d().direct_space_state.intersect_ray(q).is_empty()
 
 
