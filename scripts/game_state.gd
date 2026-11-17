@@ -22,3 +22,20 @@ var checkpoint_yaw: float = 0.0
 var has_checkpoint: bool = false
 ## Сколько раз герой «очнулся» (поймали, сжёг ангел) — смерть в игре не смерть (CLAUDE.md §1).
 var wakes: int = 0
+## Подсказки управления, которые уже показаны (Hints, этап 5б): id -> true. Каждая — один раз.
+var hints_shown: Dictionary = {}
+
+
+## «Начать заново» (конец демо): всё как при первом запуске игры. Настройки игрока (Settings) не трогаются.
+func reset_run() -> void:
+	current_checkpoint = ""
+	read_notes.clear()
+	story_flags.clear()
+	has_key = false
+	lamp_out = true
+	intro_done = false
+	checkpoint_position = Vector3.ZERO
+	checkpoint_yaw = 0.0
+	has_checkpoint = false
+	wakes = 0
+	hints_shown.clear()

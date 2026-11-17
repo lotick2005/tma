@@ -106,6 +106,14 @@ const _POT_WOBBLE := [
 const _STONE_DROP := [
 	"res://audio/stone_drop_01.ogg", "res://audio/stone_drop_02.ogg", "res://audio/stone_drop_03.ogg", "res://audio/stone_drop_04.ogg", "res://audio/stone_drop_05.ogg",
 ]
+const _HAMMER_FAR := [
+	"res://audio/hammer_nail_07.ogg", "res://audio/hammer_nail_08.ogg", "res://audio/hammer_nail_09.ogg",
+]
+const _SCREAM_PAIN := ["res://audio/scream_pain_01.ogg", "res://audio/scream_pain_02.ogg"]
+const _GROAN_PAIN := ["res://audio/groan_pain_01.ogg", "res://audio/groan_pain_02.ogg"]
+const _GATE_RATTLE := [
+	"res://audio/gate_rattle_01.ogg", "res://audio/gate_rattle_02.ogg", "res://audio/gate_rattle_03.ogg", "res://audio/gate_rattle_04.ogg",
+]
 const _PARCHMENT := [
 	"res://audio/parchment_01.ogg", "res://audio/parchment_02.ogg", "res://audio/parchment_03.ogg", "res://audio/parchment_04.ogg",
 ]
@@ -242,6 +250,17 @@ const SOUNDS := {
 	"wood_clack": {"file": _WOOD_CLACK, "bus": "SFX", "db": -4.0, "unit": 2.5, "range": 30.0},
 	## Записки (этап 5б): шорох свитка при чтении — не из точки (экран записки, play_2d); табличка — wood_clack.
 	"parchment": {"file": _PARCHMENT, "bus": "SFX", "db": -4.0},
+
+	# ─── Конец демо (этап 5б): ворота Антонии заперты, за скалой распинают ─────────
+	## Створку дёргают (герой, вплотную). Из-за скалы (≈15 м, за камнем — окклюзия −12 дБ): далёкие удары молотка
+	## по одному (07–09 — уличные, далёкие), крик и стон, обряд (пение и стук, петля 30 с) + напевы святых.
+	## Цель у слушателя за скалой: молоток ≈ −36, крик ≈ −32, обряд ≈ −40 дБFS — тише фона, но различимо.
+	"gate_rattle": {"file": _GATE_RATTLE, "bus": "SFX", "db": -6.0, "unit": 3.0, "range": 30.0, "pitch": 0.04},
+	"hammer_far": {"file": _HAMMER_FAR, "bus": "SFX", "db": 2.0, "unit": 8.0, "range": 70.0, "pitch": 0.04},
+	"scream_pain": {"file": _SCREAM_PAIN, "bus": "Voices", "db": -2.0, "unit": 6.0, "range": 70.0, "pitch": 0.03},
+	"groan_pain": {"file": _GROAN_PAIN, "bus": "Voices", "db": 0.0, "unit": 6.0, "range": 60.0, "pitch": 0.03},
+	"ritual_far": {"file": "res://audio/ritual_far_01.ogg", "bus": "Voices", "db": 0.0, "loop": true,
+		"unit": 8.0, "range": 70.0},
 
 	# ─── Ложные тревоги ───────────────────────────────────────────────────────────
 	"alarm_stone_fall": {"synth": "stone_fall", "bus": "SFX", "db": -6.0, "variants": 3, "unit": 3.0, "range": 40.0, "pitch": 0.1},

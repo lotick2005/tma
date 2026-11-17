@@ -46,10 +46,14 @@ var _phys: PhysProps
 var _saints: Array[Saint] = []
 var _first_saint: Saint
 var _first_scene := false
+## Середина створок ворот Антонии у земли (для конца демо).
+var _gate_point := Vector3.ZERO
 var _stealth := false
 ## Записки (этап 5б): в мире и экран чтения / журнал.
 var _notes: Notes
 var _notes_ui: NotesUI
+## Подсказки управления (этап 5б).
+var _hints: Hints
 ## Сколько секунд пекся навмеш (для отчёта / отладки).
 var nav_bake_ms := 0
 
@@ -100,6 +104,10 @@ func _ready() -> void:
 	_notes_ui.name = "NotesUI"
 	add_child(_notes_ui)
 	_notes_ui.setup(_player)
+	_hints = Hints.new()
+	_hints.name = "Hints"
+	add_child(_hints)
+	_hints.setup(_player)
 	_setup_audio()
 	# Вступление — днём; если оно уже пройдено, уровень сразу во тьме
 	_is_day = not GameState.intro_done
@@ -434,6 +442,9 @@ func _play_first_saint() -> void:
 		"target": self, "level": self})
 	if sn.state == Saint.State.SCENE:
 		first_saint_leave()
+	# После первого святого нужны присед и светильник (подсказки — один раз)
+	_hints.request("crouch")
+	_hints.request("lamp")
 
 
 ## Шаг катсцены: бьёт ровно, без пауз.
@@ -983,7 +994,8 @@ func _build_antonia() -> void:
 		var xb: float = gx + side * leaf
 		_b.box_between(Vector3(minf(xa, xb), gy, zg - ht - 0.25), Vector3(maxf(xa, xb), gy + door_h, zg - ht),
 			_m.gate, 2.25, true)
-	# Перед воротами — триггер «конец уровня»: подошёл к створкам вплотную
+	_gate_point = Vector3(gx, gy + 0.2, zg - ht)
+	# Перед воротами — триггер «конец демо»: подошёл к створкам вплотную
 	var area := Area3D.new()
 	area.name = "LevelExit"
 	var shape := CollisionShape3D.new()
@@ -1052,23 +1064,12 @@ func _place_player() -> void:
 
 
 func _on_exit_body_entered(body: Node3D) -> void:
-	if _finished or not body is Player:
+	if _finished or not body is Player or Awaken.busy or Cutscenes.playing:
 		return
 	_finished = true
 	level_finished.emit()
-	# Уровня 2 пока нет: затемнение и надпись
-	var layer := CanvasLayer.new()
-	layer.layer = 10
-	var fade := ColorRect.new()
-	fade.color = Color(0, 0, 0, 0)
-	fade.set_anchors_preset(Control.PRESET_FULL_RECT)
-	layer.add_child(fade)
-	var label := Label.new()
-	label.text = "Конец уровня 1"
-	label.set_anchors_and_offsets_preset(Control.PRESET_CENTER)
-	label.modulate.a = 0.0
-	layer.add_child(label)
-	add_child(layer)
-	var tw := create_tween()
-	tw.tween_property(fade, "color:a", 1.0, 1.5)
-	tw.tween_property(label, "modulate:a", 1.0, 0.5)
+	# Конец демо (этап 5б): только звук из-за скалы, потом чернота и титр
+	var end := DemoEnd.new()
+	end.name = "DemoEnd"
+	add_child(end)
+	end.run(self, _player, _gate_point, _gate_point + D.ANTONIA_GATE.sound_offset, _saints)
