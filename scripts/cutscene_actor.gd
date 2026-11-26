@@ -16,6 +16,9 @@ const ALIASES := {"panic": "terrified", "sway": "pray_stand", "kneel": "kneel_do
 @export var variant := 0
 @export var model := ""
 @export var anim := "idle"
+## Добавка к реестру: у героя шаги тише на 3 дБ (ходьба) и 4,5 дБ (бег) — людям катсцен возвращаем прежнюю громкость.
+const CROWD_STEP_WALK_DB := 3.0
+const CROWD_STEP_RUN_DB := 4.5
 ## Звук шагов: идёт — step_stone, бежит (быстрее run_from м/с) — step_stone_run. false — без шагов.
 @export var steps := true
 @export var run_from := 2.6
@@ -73,7 +76,9 @@ func _process(delta: float) -> void:
 		var was := floori(_walked / step_len)
 		_walked += moved.length()
 		if floori(_walked / step_len) != was:
-			AudioManager.play_3d("step_stone_run" if running else "step_stone", global_position)
+			# Реестр понижен под свои шаги героя (доделка 6, пункт 7); у людей катсцен громкость прежняя
+			AudioManager.play_3d("step_stone_run" if running else "step_stone", global_position,
+				{"db": CROWD_STEP_RUN_DB if running else CROWD_STEP_WALK_DB})
 	_update_anim()
 
 

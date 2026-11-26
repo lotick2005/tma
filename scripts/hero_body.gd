@@ -235,8 +235,8 @@ func _build_meshes() -> void:
 	var parts := CharacterModel.split_mesh(mesh, 3, classify)
 	var body_layer := 1 << (Player.BODY_LAYER - 1)
 
-	# Тень — целый меш (с головой), сам не рисуется
-	var shadow := _skinned("Shadow", mesh, CharacterModel.material("hero"), body_layer)
+	# Тень — целый меш (с головой), сам не рисуется; лежит на слое HEAD_LAYER, который камера героя не видит
+	var shadow := _skinned("Shadow", mesh, CharacterModel.material("hero"), 1 << (Player.HEAD_LAYER - 1))
 	shadow.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_SHADOWS_ONLY
 
 	# Видимое тело: без тени, ближе hide_radius к камере не рисуется

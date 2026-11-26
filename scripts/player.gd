@@ -16,6 +16,9 @@ const BODY_LAYER := 2
 ## Слой рук и модели светильника: свой огонь их напрямую не освещает (вплотную пересвечивал бы),
 ## они подсвечены через self_illum.
 const VIEW_LAYER := 3
+## Слой целого меша тела (с головой и волосами) — только для теней. Камера героя этот слой не рисует:
+## голова и волосы не могут попасть в кадр, как бы ни повернулось тело (hero_body.gd, «Shadow»).
+const HEAD_LAYER := 5
 
 ## Сменился режим движения: стоит / присел / идёт / бежит. Нужен для шума (этап 5).
 signal move_mode_changed(mode: MoveMode)
@@ -85,6 +88,7 @@ func _ready() -> void:
 	_collision.shape.radius = collision_radius
 	_set_body_height(stand_height)
 	_head.position.y = 1.6
+	_camera.cull_mask = 0xFFFFF & ~(1 << (HEAD_LAYER - 1))
 	_arms.set_lamp_out(GameState.lamp_out, true)
 	_arms.lamp_changed.connect(func(out: bool) -> void: GameState.lamp_out = out)
 	_body.foot_down.connect(func() -> void: footstep.emit(move_mode))
@@ -117,7 +121,7 @@ func _unhandled_input(event: InputEvent) -> void:
 		_head.rotation.x = clampf(_head.rotation.x - d.y, -limit, limit)
 	elif event.is_action_pressed("crouch") and crouch_toggle:
 		_set_crouched(not _crouched)
-	elif event.is_action_pressed("lamp_toggle"):
+	elif event.is_action_pressed("lamp_toggle") and GameState.has_lamp:
 		_arms.toggle_lamp()
 
 

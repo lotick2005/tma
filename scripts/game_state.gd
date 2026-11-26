@@ -13,7 +13,9 @@ var story_flags: Dictionary = {}
 ## Есть ли у героя ключ от калитки южных ворот (уровень 2, Антония).
 var has_key: bool = false
 ## Светильник в руке (true) или убран (false). Клавиша F, см. scripts/hero_arms.gd.
-var lamp_out: bool = true
+var lamp_out: bool = false
+## Герой уже подобрал светильник (scripts/lamp_pickup.gd). Пока нет — F ничего не делает, в руке пусто.
+var has_lamp: bool = false
 ## Вступление (уровень 1: день на площади, вестник, тьма) пройдено — уровень сразу начинается во тьме.
 var intro_done: bool = false
 ## Где герой очнётся, если его поймают (чекпойнт, этап 5): точка ног и взгляд. Пишет триггер-зона чекпойнта.
@@ -32,7 +34,8 @@ func reset_run() -> void:
 	read_notes.clear()
 	story_flags.clear()
 	has_key = false
-	lamp_out = true
+	lamp_out = false
+	has_lamp = false
 	intro_done = false
 	checkpoint_position = Vector3.ZERO
 	checkpoint_yaw = 0.0

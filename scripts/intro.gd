@@ -8,6 +8,9 @@ extends Node
 ## Отладка (tma/debug/keys): клавиша 4 — пропустить вступление (сразу во тьму).
 
 const CUTSCENE := "res://data/cutscenes/intro.gd"
+const Sounds := preload("res://data/sounds.gd")
+## Сколько секунд в сценарии между aftermath и началом «очнулся» (шаг pause перед parallel).
+const WAKE_START := 1.0
 ## Root motion анимаций падения к последнему кадру, м — в осях человека (лицом в −Z, +X — вправо).
 ## Замерено на модели (CharacterModel.motion); в animations/README.md те же числа «вперёд / вправо».
 const FALL_MOTION := {
@@ -378,8 +381,8 @@ func head_blow() -> void:
 	_ring = AudioManager.play_2d("ring_ears")
 	if _ring:
 		var tw := create_tween()
-		tw.tween_interval(1.5)
-		tw.tween_property(_ring, "volume_db", _ring.volume_db - 40.0, 5.5).set_ease(Tween.EASE_IN)
+		tw.tween_interval(0.75)
+		tw.tween_property(_ring, "volume_db", _ring.volume_db - 40.0, 2.75).set_ease(Tween.EASE_IN)
 	await get_tree().create_timer(0.12).timeout
 	if state == State.CUTSCENE and not Cutscenes.skipping:
 		AudioManager.play_2d("body_fall", {"db": -2.0})
@@ -450,7 +453,9 @@ func aftermath() -> void:
 		_barrier.queue_free()
 		_barrier = null
 	_level.show_aftermath()
-	_level.set_day(false, 8.0)
+	# Гул и ветер возвращаются не разом с вдохом: через WAKE_START (пауза катсцены до «очнулся») + drone_delay, за drone_rise
+	var wk: Dictionary = Sounds.WAKE
+	_level.set_day(false, float(wk.drone_rise), WAKE_START + float(wk.drone_delay), WAKE_START + float(wk.choir_delay))
 	_player.crouch(false)
 	GameState.intro_done = true
 
@@ -467,6 +472,3 @@ func double(on: bool) -> void:
 		if not Cutscenes.skipping:
 			AudioManager.play_2d("wake_groan", {"db": -2.0})
 
-
-func lamp_out() -> void:
-	_player.set_lamp(true)

@@ -32,6 +32,8 @@ var props: PhysProps
 ## Записки уровня и экран чтения (этап 5б, ставит уровень): E над запиской — читать, а не брать.
 var notes: Notes
 var notes_ui: NotesUI
+## Светильник на земле, пока герой его не взял (ставит уровень, scripts/lamp_pickup.gd).
+var lamp: LampPickup
 
 var _player: Player
 var _arms: Node3D
@@ -65,7 +67,7 @@ func _unhandled_input(event: InputEvent) -> void:
 	if _player.locked or Input.mouse_mode != Input.MOUSE_MODE_CAPTURED:
 		return
 	if event.is_action_pressed("interact"):
-		if not try_read():
+		if not try_lamp() and not try_read():
 			try_pick()
 	elif event.is_action_pressed("throw"):
 		start_throw()
@@ -121,6 +123,28 @@ func _physics_process(delta: float) -> void:
 		k *= float(p.info.get("bump", 1.0))
 		p.bump(dir * k * pow(v.length(), S.BUMP_SPEED_POWER) * pow(p.mass, S.BUMP_MASS_POWER), at)
 	_touching = now
+
+
+# ─── Светильник ──────────────────────────────────────────────────────────────
+
+## Светильник под взглядом и достаёт рукой (подсказка «E — взять» — Hints).
+func lamp_pickable() -> bool:
+	if lamp == null or not is_instance_valid(lamp) or GameState.has_lamp:
+		return false
+	var cam := _player.eye_camera()
+	return lamp.pickable(cam.global_position, -cam.global_basis.z, [_player.get_rid()])
+
+
+## E: взять светильник с земли — теперь он у героя в руке, работает F.
+func try_lamp() -> bool:
+	if _throw != Throw.NONE or not lamp_pickable():
+		return false
+	GameState.has_lamp = true
+	AudioManager.play_3d("stone_drop", lamp.global_position, {"db": -14.0, "pitch": 1.1})
+	lamp.queue_free()
+	lamp = null
+	_player.set_lamp(true)
+	return true
 
 
 # ─── Читать ──────────────────────────────────────────────────────────────────
@@ -373,6 +397,14 @@ func _update_arc() -> void:
 		var nrm: Vector3 = tr.normal
 		var side := nrm.cross(Vector3.RIGHT if absf(nrm.x) < 0.9 else Vector3.FORWARD).normalized()
 		_mark.global_transform = Transform3D(Basis(side, nrm, side.cross(nrm)), tr.pos + nrm * 0.03)
+
+
+## Вернуть в руку то, что было (чекпойнт: «Кувшин в инвентаре на месте»).
+func set_held(kind: String, count: int) -> void:
+	held_kind = kind if count > 0 else ""
+	held_count = maxi(count, 0)
+	_throw = Throw.NONE
+	_update_held()
 
 
 ## Отдать всё из руки (поймали — уронил).

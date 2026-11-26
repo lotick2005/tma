@@ -17,6 +17,8 @@ const DETAIL_RANGE_DARK := 36.0
 const DETAIL_RANGE_DAY := 70.0
 const SAINT_SCENE := preload("res://scenes/actors/saint.tscn")
 const FIRST_SAINT_CUTSCENE := "res://data/cutscenes/first_saint.gd"
+## Светильник лежит перед героем на таком расстоянии от места пробуждения, м.
+const LAMP_DIST := 1.3
 
 ## Пресеты освещения: «тьма» — вся игра, «день» — вступление (этап 4). Переключатель — в панели (0).
 @export var darkness: LightingPreset
@@ -32,6 +34,14 @@ var _wall_top := 0.0
 var _plaza_y := 0.0
 var _finished := false
 var _is_day := false
+var _audio_token := 0
+## Светильник на земле, пока герой его не взял.
+var _lamp: LampPickup
+## Чекпойнт, который герой прошёл во время катсцены или поимки: сохраняется, когда управление вернётся ([id, точка, взгляд]).
+var _pending_checkpoint: Array = []
+## Что было в мире на последнем чекпойнте: предметы с физикой и то, что в левой руке (_respawn возвращает всё это).
+var _snapshot := {}
+var _flash: ColorRect
 ## Предметы, которые появляются только после тьмы (следы людей у арки, на площади, на местах толпы).
 var _aftermath: Node3D
 var _after_b: LevelBuilder
@@ -251,6 +261,9 @@ func _process(_delta: float) -> void:
 		return
 	if _stealth:
 		_check_first_saint()
+		if not _pending_checkpoint.is_empty() and not _control_busy():
+			var c := _pending_checkpoint
+			_set_checkpoint(c[0], c[1], c[2])
 	var z: Array = D.DEAD_CELLAR.zone
 	var c := floori(_player.global_position.x - _quarter.x0)
 	var r := floori(_player.global_position.z - _quarter.z0)
@@ -268,6 +281,26 @@ func show_aftermath() -> void:
 	_aftermath.visible = true
 	_after_b.body.process_mode = Node.PROCESS_MODE_INHERIT
 	_start_stealth()
+	_spawn_lamp()
+
+
+## Светильник героя лежит перед ним, где он очнулся (в сторону цели): герой берёт его сам (E), до этого в руке пусто.
+func _spawn_lamp() -> void:
+	if GameState.has_lamp or _lamp != null:
+		return
+	var to := goal_point() - _player.global_position
+	to.y = 0.0
+	var at := _player.global_position + to.normalized() * LAMP_DIST
+	var q := PhysicsRayQueryParameters3D.create(at + Vector3.UP * 1.0, at + Vector3.DOWN * 1.0, 1)
+	var hit := get_world_3d().direct_space_state.intersect_ray(q)
+	if not hit.is_empty():
+		at = hit.position
+	_lamp = LampPickup.new()
+	add_child(_lamp)
+	_lamp.global_position = at
+	_lamp.rotation.y = atan2(-to.x, -to.z) + deg_to_rad(40.0)
+	if _player.hands():
+		_player.hands().lamp = _lamp
 
 
 # ─── Стелс (этап 5) ──────────────────────────────────────────────────────────
@@ -389,13 +422,70 @@ func _place_first_saint() -> void:
 		_first_saint.start_strikes()
 
 
+## Чекпойнт сохраняется только когда игрок сам управляет героем: пройдён во время катсцены, обморока или «очнулся» —
+## ждёт, пока управление вернётся (_process), и тогда сохраняется со вспышкой.
 func _set_checkpoint(id: String, at: Vector3, yaw: float) -> void:
 	if GameState.current_checkpoint == id and GameState.has_checkpoint:
 		return
+	if _control_busy():
+		_pending_checkpoint = [id, at, yaw]
+		return
+	_pending_checkpoint = []
 	GameState.current_checkpoint = id
 	GameState.checkpoint_position = at
 	GameState.checkpoint_yaw = yaw
 	GameState.has_checkpoint = true
+	_take_snapshot()
+	_flash_checkpoint()
+
+
+func _control_busy() -> bool:
+	return Cutscenes.playing or Awaken.busy or _player.locked
+
+
+## Снимок мира на чекпойнте: все предметы с физикой (вид, положение) и что в левой руке.
+func _take_snapshot() -> void:
+	var items := []
+	if _phys:
+		for p in _phys.bodies:
+			if is_instance_valid(p):
+				items.append([p.kind, p.global_transform])
+	var hands := _player.hands()
+	_snapshot = {"items": items, "held_kind": hands.held_kind if hands else "", "held_count": hands.held_count if hands else 0}
+
+
+## Вернуть мир к снимку: предметы — по местам (подобранные и разбитые возвращаются, брошенные — туда, где лежали),
+## в руке — то, что было на чекпойнте.
+func _restore_snapshot() -> void:
+	if _snapshot.is_empty() or _phys == null:
+		return
+	for p in _phys.bodies.duplicate():
+		if is_instance_valid(p):
+			p.queue_free()
+	_phys.bodies.clear()
+	for it: Array in _snapshot.items:
+		var p := _phys.spawn(it[0], (it[1] as Transform3D).origin, 0.0)
+		if p:
+			p.global_transform = it[1]
+	var hands := _player.hands()
+	if hands:
+		hands.set_held(_snapshot.held_kind, _snapshot.held_count)
+
+
+## Короткая белая вспышка: «сохранено» (чекпойнт записан).
+func _flash_checkpoint() -> void:
+	if _flash == null:
+		var layer := CanvasLayer.new()
+		layer.layer = 5
+		add_child(layer)
+		_flash = ColorRect.new()
+		_flash.color = Color(1.0, 1.0, 1.0, 0.0)
+		_flash.set_anchors_preset(Control.PRESET_FULL_RECT)
+		_flash.mouse_filter = Control.MOUSE_FILTER_IGNORE
+		layer.add_child(_flash)
+	var tw := create_tween()
+	tw.tween_property(_flash, "color:a", 0.28, 0.25)
+	tw.tween_property(_flash, "color:a", 0.0, 0.75)
 
 
 func _on_caught(saint: Saint) -> void:
@@ -407,6 +497,8 @@ func _on_caught(saint: Saint) -> void:
 
 ## В черноте после «поймали»: герой — к последнему чекпойнту, святые — по местам.
 func _respawn() -> void:
+	_pending_checkpoint = []
+	_restore_snapshot()
 	_player.teleport(GameState.checkpoint_position + Vector3.UP * 0.05, GameState.checkpoint_yaw)
 	for sn in _saints:
 		if sn != _first_saint:
@@ -442,6 +534,8 @@ func _play_first_saint() -> void:
 		"target": self, "level": self})
 	if sn.state == Saint.State.SCENE:
 		first_saint_leave()
+	# Сцена кончилась, управление вернулось — здесь сохранение (со вспышкой)
+	_set_checkpoint("first_saint", _player.global_position, _player.rotation.y)
 	# После первого святого нужны присед и светильник (подсказки — один раз)
 	_hints.request("crouch")
 	_hints.request("lamp")
@@ -532,13 +626,25 @@ func _add_sound(sound_name: String, pos: Vector3, when: String) -> void:
 
 
 ## Днём — гомон площади и дневные источники, во тьме — фон тьмы с ветром, хор в молельне и ложные тревоги.
-func _apply_audio(fade := 3.0) -> void:
+## delay — через сколько секунд включить фон (гул, ветер), emitter_delay — 3D-источники и ложные тревоги («очнулся»:
+## всё не разом, data/sounds.gd WAKE).
+func _apply_audio(fade := 3.0, delay := 0.0, emitter_delay := 0.0) -> void:
+	_audio_token += 1
+	var token := _audio_token
+	if delay > 0.0:
+		await get_tree().create_timer(delay).timeout
+		if token != _audio_token:
+			return
 	AudioManager.set_layer("bg", "ambience_day_crowd" if _is_day else "ambient_drone", fade)
 	# Во тьме под гулом — тихий ветер (второй слой)
 	if _is_day:
 		AudioManager.clear_layer("wind", fade)
 	else:
 		AudioManager.set_layer("wind", "wind_drone", fade)
+	if emitter_delay > delay:
+		await get_tree().create_timer(emitter_delay - delay).timeout
+		if token != _audio_token:
+			return
 	for em in _day_sounds:
 		em.set_active(_is_day)
 	for em in _dark_sounds:
@@ -577,12 +683,12 @@ func _current_preset() -> LightingPreset:
 	return day if _is_day else darkness
 
 
-func _apply_lighting(audio_fade := 3.0) -> void:
+func _apply_lighting(audio_fade := 3.0, audio_delay := 0.0, emitter_delay := 0.0) -> void:
 	var preset := _current_preset()
 	preset.apply($WorldEnvironment.environment, $Sun, _player.get_node("Head/Camera3D"), _sky,
 		1 << (LevelBuilder.INTERIOR_LAYER - 1))
 	_set_detail_range(DETAIL_RANGE_DAY if _is_day else DETAIL_RANGE_DARK)
-	_apply_audio(audio_fade)
+	_apply_audio(audio_fade, audio_delay, emitter_delay)
 
 
 func _set_detail_range(r: float) -> void:
@@ -592,9 +698,9 @@ func _set_detail_range(r: float) -> void:
 
 
 ## День или тьма (свет и звук). audio_fade — за сколько секунд сменится фон.
-func set_day(on: bool, audio_fade := 3.0) -> void:
+func set_day(on: bool, audio_fade := 3.0, audio_delay := 0.0, emitter_delay := 0.0) -> void:
 	_is_day = on
-	_apply_lighting(audio_fade)
+	_apply_lighting(audio_fade, audio_delay, emitter_delay)
 
 
 ## Для катсцен (шаг «lighting»): смесь пресетов "day" / "darkness", t от 0 до 1. Звук не трогает.

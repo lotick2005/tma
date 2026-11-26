@@ -37,6 +37,7 @@ var _journal_hint: Label
 func _ready() -> void:
 	layer = 8
 	process_mode = Node.PROCESS_MODE_ALWAYS
+	add_to_group("notes_ui")
 	_build()
 	_show(Mode.NONE)
 
@@ -97,7 +98,8 @@ func _input(event: InputEvent) -> void:
 			elif n > 0 and (event.is_action_pressed("move_back") or event.is_action_pressed("ui_down") or _wheel(event, MOUSE_BUTTON_WHEEL_DOWN)):
 				_sel = (_sel + 1) % n
 				_fill_list()
-	# Пока экран открыт, клавиши и клики до игры не доходят (Esc — пропускаем: курсор отпускает браузер и ClickToStart)
+	# Пока экран открыт, клавиши и клики до игры не доходят (Esc — пропускаем: записка закроется, включится пауза,
+	# её ведёт ClickToStart: курсор отпущен — он закрывает записку и ставит паузу)
 	if not event.is_action_pressed("pause"):
 		get_viewport().set_input_as_handled()
 
@@ -111,6 +113,11 @@ func _can_open_journal() -> bool:
 func _close() -> void:
 	_show(Mode.NONE)
 	get_tree().paused = false
+
+
+## Закрыть записку или журнал, не снимая паузу: её теперь держит экран паузы (ClickToStart — Esc, курсор отпущен).
+func close_for_pause() -> void:
+	_show(Mode.NONE)
 
 
 func _is_click(event: InputEvent) -> bool:
