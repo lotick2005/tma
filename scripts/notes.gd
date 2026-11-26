@@ -138,11 +138,11 @@ func _build_shard(node: Node3D) -> ShaderMaterial:
 	var clay := PsxMaterial.make(_writing_texture(Color(0.62, 0.36, 0.22), Color(0.12, 0.07, 0.05), 5), Color.WHITE)
 	clay.set_shader_parameter("self_illum_color", Color(1.0, 0.8, 0.55))
 	var body := BoxMesh.new()
-	body.size = Vector3(0.13, 0.012, 0.1)
-	_mesh(node, body, PsxMaterial.make(null, Color(0.55, 0.31, 0.19)), Vector3(0.0, 0.006, 0.0))
+	body.size = Vector3(0.2, 0.014, 0.15)
+	_mesh(node, body, PsxMaterial.make(null, Color(0.55, 0.31, 0.19)), Vector3(0.0, 0.007, 0.0))
 	var face := PlaneMesh.new()
-	face.size = Vector2(0.12, 0.09)
-	_mesh(node, face, clay, Vector3(0.0, 0.0125, 0.0))
+	face.size = Vector2(0.18, 0.13)
+	_mesh(node, face, clay, Vector3(0.0, 0.0145, 0.0))
 	return clay
 
 
