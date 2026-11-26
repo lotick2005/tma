@@ -12,6 +12,10 @@ const STEP_RADIUS := {
 	"walk": 4.0,
 	"run": 10.0,
 }
+## Встал из приседа (полировка демо 3): первые шаги не сразу громкие — радиус шага нарастает от STAND_RISE_FROM м
+## до обычного за STAND_RISE_TIME с. Святой ближе STAND_RISE_FROM слышит сразу, дальше — с задержкой.
+const STAND_RISE_FROM := 3.0
+const STAND_RISE_TIME := 0.8
 ## Шум за стеной слышно хуже: радиус × это.
 const WALL_FACTOR := 0.5
 

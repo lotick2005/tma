@@ -39,6 +39,8 @@ var main: AudioStreamPlayer3D
 var twin: AudioStreamPlayer3D
 var _base_db := 0.0
 var _range := 30.0
+## За стеной тише на столько, дБ (реестр "occl_db", иначе OCCLUDED_DB).
+var _occl_db := OCCLUDED_DB
 var _active := true
 var _debug_mesh: MeshInstance3D
 var _fade: Tween
@@ -48,6 +50,7 @@ var _fade_keep := 0.0
 func setup(entry: Dictionary, reverb: bool) -> void:
 	_base_db = entry.get("db", 0.0)
 	_range = entry.get("range", 30.0)
+	_occl_db = entry.get("occl_db", OCCLUDED_DB)
 	main = _make_player(entry, entry.get("bus", "SFX"), 0)
 	if reverb:
 		twin = _make_player(entry, "Reverb_None", 1 << (ZONE_LAYER - 1))
@@ -63,6 +66,10 @@ func _make_player(entry: Dictionary, bus: String, area_mask: int) -> AudioStream
 	p.max_distance = _range
 	p.attenuation_model = AudioStreamPlayer3D.ATTENUATION_INVERSE_DISTANCE
 	p.doppler_tracking = AudioStreamPlayer3D.DOPPLER_TRACKING_DISABLED
+	# Явно Stream (полировка демо 3): в режиме Sample (веб по умолчанию) не работают эффекты шин, зоны эха и фильтр
+	# затухания (окклюзия). В проекте и так audio/general/default_playback_type.web = Stream; здесь — на случай,
+	# если настройку поменяют: вся схема источника (твин для эха, глушение за стеной) держится на Stream.
+	p.playback_type = AudioServer.PLAYBACK_TYPE_STREAM
 	add_child(p)
 	return p
 
@@ -184,7 +191,7 @@ func _process(delta: float) -> void:
 
 ## Пересчитать громкость и фильтр плееров (после смены volume_db, occlusion снаружи).
 func apply() -> void:
-	var db := _base_db + volume_db + OCCLUDED_DB * occlusion
+	var db := _base_db + volume_db - absf(_occl_db) * occlusion
 	var cutoff := lerpf(CUTOFF_CLEAR, CUTOFF_OCCLUDED, occlusion)
 	var filter_db := lerpf(FILTER_DB_CLEAR, FILTER_DB_OCCLUDED, occlusion)
 	for p in _players():

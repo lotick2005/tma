@@ -68,7 +68,9 @@ signal state_changed(saint: Saint, state: State)
 ## Бродит, идёт на шум, гонится, м/с. Герой: шаг 2,2, бег 4,6, присед 1,0.
 @export var wander_speed := 0.55
 @export var investigate_speed := 0.95
-@export var chase_speed := 2.7
+## Погоня (полировка демо 3): чуть ниже бега героя (4,6) — за 5 с бега (выносливость) отрываешься на ~5 м;
+## дальше спасает укрытие без света (hide_time).
+@export var chase_speed := 3.6
 ## Поворот, градусов в секунду.
 @export var turn_speed := 150.0
 ## Столько секунд идёт, но почти не продвинулся — перестраивает путь; ещё столько же — бросает цель
@@ -79,10 +81,15 @@ signal state_changed(saint: Saint, state: State)
 ## Тишина после того, как услышал, с.
 @export var alert_min := 1.5
 @export var alert_max := 2.5
-## Сколько ищет на месте шума, с.
-@export var search_time := 9.0
+## Сколько ищет на месте шума (или у последней точки, где слышал героя в погоне), с: случайно от min до этого.
+@export var search_time := 8.0
+@export var search_time_min := 6.0
 ## Погоня кончается, если столько секунд ничего не слышно и не видно.
-@export var chase_lose_time := 4.0
+@export var chase_lose_time := 3.0
+## Укрылся (полировка демо 3): светильник убран, святой не видит героя (стена, проём, ящик между головой святого
+## и героем) столько секунд — погоня прерывается: замирает и слушает (alert_min…alert_max), потом идёт к последней
+## точке, где слышал, ищет search_time и уходит. Шаг, услышанный в погоне, сбрасывает счёт.
+@export var hide_time := 0.8
 ## Пауза на точке патруля, с.
 @export var wander_pause_min := 2.0
 @export var wander_pause_max := 6.0
@@ -94,7 +101,7 @@ signal state_changed(saint: Saint, state: State)
 ## Громкость напева: обычно, когда ищет, в погоне (дБ, добавка к реестру).
 @export var chant_db := 0.0
 @export var chant_search_db := -7.0
-@export var chant_chase_db := 4.0
+@export var chant_chase_db := 2.0
 ## Рык в погоне — раз в столько секунд.
 @export var growl_min := 3.0
 @export var growl_max := 6.0
@@ -127,6 +134,9 @@ var _patrol_i := 0
 var _returning := false
 var _heard_times: Array[float] = []
 var _lose := 0.0
+var _hidden := 0.0
+## Погоня прервана укрытием: после тишины (ALERT) — к последней точке (INVESTIGATE), а не снова в погоню.
+var _lost_hidden := false
 var _vision_timer := 0.0
 var _lamp_seen_cool := 0.0
 var _twitch_timer := 5.0
@@ -261,6 +271,8 @@ func reset() -> void:
 	_search_left = 0.0
 	_search_center = home
 	_lose = 0.0
+	_hidden = 0.0
+	_lost_hidden = false
 	_stuck = 0.0
 	_stuck_from = home
 	_stuck_count = 0
@@ -365,6 +377,8 @@ func hear(pos: Vector3) -> void:
 		State.CHASE:
 			_target = pos
 			_lose = chase_lose_time
+			# Услышал — значит, не затаился: укрытие считается заново
+			_hidden = 0.0
 
 
 func _look(delta: float) -> void:
@@ -397,6 +411,15 @@ func _look(delta: float) -> void:
 			and _clear_to(_player.global_position + Vector3.UP * 1.3):
 		_lamp_seen_cool = 1.2 if state != State.CHASE else 0.3
 		hear(_player.global_position)
+
+
+## Укрылся: светильник убран и между головой святого и героем (на высоте груди: стоя или в приседе) — стена,
+## край проёма или ящик (один луч за кадр, только в погоне).
+func _player_hidden() -> bool:
+	if _player == null or GameState.lamp_out:
+		return false
+	var chest := _player.global_position + Vector3.UP * (0.9 if _player.is_crouched() else 1.3)
+	return not _clear_to(chest)
 
 
 func _clear_to(p: Vector3) -> bool:
@@ -433,7 +456,7 @@ func _enter(s: State, force := false) -> void:
 			_agent.target_position = _target
 		State.SEARCH:
 			_voice("search")
-			_search_left = search_time
+			_search_left = randf_range(minf(search_time_min, search_time), search_time)
 			_search_center = _target
 			_timer = randf_range(1.5, 3.0)
 		State.CHASE:
@@ -487,7 +510,10 @@ func _physics_process(delta: float) -> void:
 			_turn_toward(_target, delta, 0.5)
 			if _timer <= 0.0:
 				var d := global_position.distance_to(_target)
-				if d < chase_instant or (_heard_times.size() >= 2 and d < chase_distance):
+				if _lost_hidden:
+					_lost_hidden = false
+					_enter(State.INVESTIGATE)
+				elif d < chase_instant or (_heard_times.size() >= 2 and d < chase_distance):
 					_enter(State.CHASE)
 				else:
 					_enter(State.INVESTIGATE)
@@ -512,8 +538,11 @@ func _physics_process(delta: float) -> void:
 				_go_back()
 		State.CHASE:
 			_lose -= delta
-			# Вплотную чует; пока слышит шаги — идёт прямо на героя, а не на место прошлого шага
-			if _player and not _player.locked and (global_position.distance_to(_player.global_position) < sight_close * 1.4
+			var hid := _player_hidden()
+			_hidden = _hidden + delta if hid else 0.0
+			# Вплотную чует; пока слышит шаги — идёт прямо на героя, а не на место прошлого шага.
+			# Укрывшегося без света «вплотную» не чует: только если услышал шаг
+			if _player and not _player.locked and ((not hid and global_position.distance_to(_player.global_position) < sight_close * 1.4)
 					or Time.get_ticks_msec() / 1000.0 - _step_heard < 1.0):
 				_target = _player.global_position
 			if not _arrived(_target):
@@ -526,7 +555,12 @@ func _physics_process(delta: float) -> void:
 					want = _target
 					speed = chase_speed
 					direct = true
-			if _lose <= 0.0:
+			if _hidden >= hide_time:
+				_hidden = 0.0
+				_heard_times.clear()
+				_lost_hidden = true
+				_enter(State.ALERT)
+			elif _lose <= 0.0:
 				_enter(State.INVESTIGATE)
 		State.CATCH, State.SCENE:
 			velocity.x = 0.0
@@ -775,7 +809,7 @@ func _voice(mode: String) -> void:
 			_set_em(_drone, true, 0.0, _chant_pitch)
 		"scene":
 			_set_em(_chant, false)
-			_set_em(_mumble, true, -8.0, _chant_pitch * 0.94)
+			_set_em(_mumble, true, -14.0, _chant_pitch * 0.94)
 			_set_em(_drone, false)
 
 

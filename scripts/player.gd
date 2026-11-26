@@ -64,6 +64,8 @@ var stamina := 0.0
 var locked := false
 
 var _crouched := false
+## Когда последний раз встал из приседа, с (Time): шум шагов после этого нарастает (HeroHands, STAND_RISE_*).
+var stood_up_at := -100.0
 var _exhausted := false
 var _debug_keys := false
 var _orbit: Camera3D
@@ -291,6 +293,8 @@ func _set_crouched(value: bool) -> void:
 	if not value and not _can_stand():
 		return
 	_crouched = value
+	if not value:
+		stood_up_at = Time.get_ticks_msec() / 1000.0
 	_set_body_height(crouch_height if _crouched else stand_height)
 
 
