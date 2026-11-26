@@ -11,7 +11,7 @@ extends RefCounted
 ## "crowd" — середина толпы; "fall_cam", "fall_look" — где лежит голова героя и куда он смотрит вдоль мостовой;
 ## "wake_look" — куда смотрит, вставая; "goal" — на север, к кварталу и маяку.
 ## Методы (ctx.target = Intro): panic(), panic_sound(), tip(имя), hero_body(видно), head_blow(), blackout(),
-## blackout_sound(), aftermath(), double(показать), lamp_out().
+## blackout_sound(), aftermath(), double(показать).
 ## Звук — записи второго набора (data/sounds.gd): толчок — shove, падение — body_fall, удар — hit_head + звон
 ## ring_ears + body_fall (head_blow); очнулся — gasp_wake, через 1,6 с — wake_groan.
 ##
@@ -100,19 +100,20 @@ const STEPS := [
 	# ── Без сознания: чернота; глухо, урывками — то, что он пропустил. Ничего не показываем ──
 	{"call": "blackout"},
 	{"effect": "shake", "amount": 0.0},
-	{"pause": 1.2},
+	{"pause": 0.6},
 	{"call": "blackout_sound", "skip": true},
-	{"pause": 13.2},
+	{"pause": 6.6},
 
 	# ── Очнулся: всё уже произошло. Щекой на мостовой, мутно; тьма и туман расходятся медленно ──
 	{"call": "aftermath"},
 	{"pause": 1.0},
+	# Звуки по очереди (data/sounds.gd WAKE): вдох сразу, дыхание (кряхтение) через 1,25 с с нарастанием 1 с,
+	# гул и ветер — через 2,5 с с нарастанием 2 с, хор — через 4 с (гул и хор запускает aftermath, отсчёт — от этого места)
 	{"parallel": [
 		{"steps": [
-			{"pause": 0.5},
-			{"sound": "gasp_wake"},
-			{"pause": 1.6},
-			{"sound": "wake_groan"},
+			{"sound": "gasp_wake", "opts": {"db": -9.0}},
+			{"pause": 1.25},
+			{"sound": "wake_groan", "opts": {"rise": 1.0, "db": 3.0}},
 		]},
 		{"effect": "fade", "to": 0.0, "time": 7.0, "ease": "in"},
 		{"effect": "global", "name": "psx_fog_end", "from": 2.0, "to": 13.5, "time": 9.0, "ease": "out"},
@@ -122,13 +123,12 @@ const STEPS := [
 	{"call": "double", "args": [true]},
 	{"shot": "high_wide", "of": "hero_feet", "side": 200.0, "dist": 4.5, "height": 4.2, "time": 5.2, "push": 0.7},
 	{"call": "double", "args": [false]},
-	# Снова из глаз: поднял голову, смотрит на север; достаёт светильник
+	# Снова из глаз: поднял голову, смотрит на север; светильник лежит перед ним на земле (его надо взять самому)
 	{"camera": "face", "at": "wake_look", "pitch": -0.45},
 	{"camera": "eyes", "time": 0.0},
 	{"call": "hero_body", "args": [true]},
 	{"pause": 0.6},
 	{"camera": "look", "at": "goal", "time": 3.0},
-	{"call": "lamp_out"},
 	{"pause": 1.2},
 	{"title": "Выбраться из города"},
 ]

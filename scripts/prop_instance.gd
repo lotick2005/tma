@@ -24,4 +24,4 @@ func _rebuild() -> void:
 		mesh = null
 		return
 	mesh = PropLibrary.mesh(kind)
-	material_override = PropLibrary.material()
+	material_override = PropLibrary.material_for(kind)

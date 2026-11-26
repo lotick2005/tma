@@ -4,13 +4,16 @@ extends CanvasLayer
 ## появляется и гаснет. Никаких обучающих окон. Что уже показано — GameState.hints_shown.
 ##  • «C — присесть», «F — светильник» — после катсцены первого святого (уровень зовёт request) или когда впервые
 ##    растёт угроза (святой рядом);
-##  • «E — подобрать» — впервые под взглядом предмет, который можно взять; «ЛКМ — бросить» — впервые что-то в руке;
+##  • «E — взять» — светильник лежит под взглядом (его подбирают сами); «F — светильник» — только когда он уже у героя;
+##  • «E — подобрать» — впервые под взглядом предмет, который можно взять; «ЛКМ — бросить» — только пока что-то в руке
+##    (опустела рука — подсказка пропадает сразу, в том числе после поимки и «очнулся»);
 ##  • «E — читать» — впервые под взглядом записка; «Tab — журнал» — после первой прочитанной записки.
 ## Пока катсцена, обморок или пауза — ждут; на паузе строка спрятана.
 
 const TEXT := {
 	"crouch": "C — присесть",
 	"lamp": "F — светильник",
+	"take_lamp": "E — взять",
 	"pick": "E — подобрать",
 	"throw": "ЛКМ — бросить",
 	"read": "E — читать",
@@ -29,6 +32,8 @@ var _label: Label
 var _t := 0.0
 var _busy := false
 var _check := 0.0
+var _shown_id := ""
+var _tween: Tween
 
 
 func _ready() -> void:
@@ -55,12 +60,33 @@ func setup(player: Player) -> void:
 func request(id: String) -> void:
 	if GameState.hints_shown.has(id) or _queue.has(id) or not TEXT.has(id):
 		return
+	# Про светильник на F — только когда он у героя; про бросок — только пока что-то в руке
+	if id == "lamp" and not GameState.has_lamp:
+		return
+	if id == "throw" and not _has_held():
+		return
 	_queue.append(id)
 
 
+func _has_held() -> bool:
+	var hands := _player.hands() if _player else null
+	return hands != null and hands.held_count > 0
+
+
 func _process(delta: float) -> void:
-	# На паузе (записка, журнал, пауза) строку не видно
-	_label.visible = not get_tree().paused
+	# На паузе (записка, журнал, пауза), при поимке и «очнулся» строку не видно
+	var hidden := get_tree().paused or Awaken.busy or (_player != null and _player.locked)
+	_label.visible = not hidden
+	# Бросать нечего (отдал, поймали, очнулся) — «ЛКМ — бросить» гаснет сразу и не стоит в очереди
+	if _player != null and not _has_held():
+		_queue.erase("throw")
+		if _shown_id == "throw":
+			_cancel_shown()
+	# Светильник уже взят — «E — взять» не нужна
+	if GameState.has_lamp:
+		_queue.erase("take_lamp")
+		if _shown_id == "take_lamp":
+			_cancel_shown()
 	if get_tree().paused:
 		return
 	if _player == null or _player.locked or Awaken.busy or not GameState.intro_done:
@@ -81,6 +107,8 @@ func _watch() -> void:
 	var hands := _player.hands()
 	if hands == null:
 		return
+	if hands.lamp_pickable():
+		request("take_lamp")
 	if hands.held_count > 0:
 		request("throw")
 	if not GameState.read_notes.is_empty() and (hands.notes_ui == null or not hands.notes_ui.is_open()):
@@ -98,12 +126,25 @@ func _watch() -> void:
 
 func _show(id: String) -> void:
 	_busy = true
+	_shown_id = id
 	GameState.hints_shown[id] = true
 	_label.text = TEXT[id]
-	var tw := create_tween()
-	tw.tween_property(_label, "modulate:a", 1.0, FADE)
-	tw.tween_interval(SHOW_TIME)
-	tw.tween_property(_label, "modulate:a", 0.0, FADE)
-	tw.tween_interval(GAP)
-	await tw.finished
+	_tween = create_tween()
+	_tween.tween_property(_label, "modulate:a", 1.0, FADE)
+	_tween.tween_interval(SHOW_TIME)
+	_tween.tween_property(_label, "modulate:a", 0.0, FADE)
+	_tween.tween_interval(GAP)
+	_tween.tween_callback(func() -> void:
+		_busy = false
+		_shown_id = "")
+
+
+## Убрать показанную подсказку сразу; она не засчитана как показанная (покажется, когда снова понадобится).
+func _cancel_shown() -> void:
+	if _tween:
+		_tween.kill()
+		_tween = null
+	GameState.hints_shown.erase(_shown_id)
+	_shown_id = ""
+	_label.modulate.a = 0.0
 	_busy = false

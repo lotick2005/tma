@@ -31,6 +31,10 @@ const THREAT_DUCK_TO := 0.7
 ## Толпа из 46 человек шагает одним и тем же step_stone_run — без предела это каша и перегруз.
 const MAX_SAME_3D := 3
 const MAX_SAME_2D := 2
+## play_2d с "rise": стартует на столько дБ тише и нарастает до полной громкости.
+const RISE_FROM_DB := 30.0
+## Срез фильтра открытой шины, Гц (unmuffle_bus).
+const UNMUFFLED_HZ := 20000.0
 
 ## Звук разрешён (был клик).
 var unlocked := false
@@ -61,6 +65,7 @@ var _occlusion_timer := 0.0
 var _occlusion_index := 0
 ## Громкость шин, выставленная игроком / панелью, дБ.
 var _user_db := {}
+var _unmuffle_token := {}
 ## Заглушка фона: 1 — звучит, 0 — тишина (плавно).
 var _ambience_on := 1.0
 var _ambience_on_target := 1.0
@@ -220,7 +225,7 @@ func play_3d(sound_name: String, pos: Vector3, opts := {}) -> SoundEmitter:
 
 
 ## Разовый звук не из точки (на свою шину из реестра): катсцены, интерфейс. opts: "db" — добавка громкости,
-## "always" — звучит и на паузе (экран записки, журнал).
+## "always" — звучит и на паузе (экран записки, журнал), "rise" — за сколько секунд нарастает от тишины до полной.
 func play_2d(sound_name: String, opts := {}) -> AudioStreamPlayer:
 	if not unlocked or int(_playing_2d.get(sound_name, 0)) >= MAX_SAME_2D:
 		return null
@@ -238,6 +243,12 @@ func play_2d(sound_name: String, opts := {}) -> AudioStreamPlayer:
 	_playing_2d[sound_name] = int(_playing_2d.get(sound_name, 0)) + 1
 	p.tree_exiting.connect(func() -> void: _playing_2d[sound_name] = maxi(int(_playing_2d.get(sound_name, 1)) - 1, 0))
 	_scene_root().add_child(p)
+	var rise := float(opts.get("rise", 0.0))
+	if rise > 0.0:
+		var target := p.volume_db
+		p.volume_db = target - RISE_FROM_DB
+		var tw := p.create_tween()
+		tw.tween_property(p, "volume_db", target, rise).set_trans(Tween.TRANS_SINE).set_ease(Tween.EASE_OUT)
 	p.play()
 	return p
 
@@ -380,6 +391,38 @@ func set_bus_muffled(bus: String, on: bool, cutoff := 450.0) -> void:
 		lp.db = AudioEffectFilter.FILTER_24DB
 		lp.set_meta("muffle", true)
 		AudioServer.add_bus_effect(i, lp)
+
+
+## Снять приглушение с шины не разом, а плавно: через delay секунд срез фильтра за ramp секунд растёт до открытого.
+## «Очнулся»: гул и ветер возвращаются не одновременно со вдохом (CLAUDE.md §5).
+func unmuffle_bus(bus: String, delay: float, ramp: float) -> void:
+	var i := AudioServer.get_bus_index(bus)
+	if i < 0:
+		return
+	var token := int(_unmuffle_token.get(bus, 0)) + 1
+	_unmuffle_token[bus] = token
+	if delay > 0.0:
+		await get_tree().create_timer(delay).timeout
+	if int(_unmuffle_token.get(bus, 0)) != token:
+		return
+	var lp: AudioEffectLowPassFilter = null
+	for k in AudioServer.get_bus_effect_count(i):
+		var fx := AudioServer.get_bus_effect(i, k)
+		if fx.has_meta("muffle") and fx is AudioEffectLowPassFilter:
+			lp = fx
+	if lp == null:
+		return
+	var from := lp.cutoff_hz
+	var t := 0.0
+	while t < ramp:
+		await get_tree().process_frame
+		if int(_unmuffle_token.get(bus, 0)) != token or not is_instance_valid(lp):
+			return
+		t += get_process_delta_time()
+		# Срез растёт по экспоненте: на слух ровное «открытие»
+		lp.cutoff_hz = from * pow(UNMUFFLED_HZ / from, clampf(t / ramp, 0.0, 1.0))
+	if int(_unmuffle_token.get(bus, 0)) == token:
+		set_bus_muffled(bus, false)
 
 
 func set_bus_volume(bus: String, db: float) -> void:

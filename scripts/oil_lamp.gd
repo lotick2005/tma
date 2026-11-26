@@ -59,7 +59,7 @@ func _ready() -> void:
 	_light.shadow_enabled = shadows
 	# Тело и руки героя не загораживают собственный светильник, а руки и он сам им не освещаются
 	var view_bit := 1 << (Player.VIEW_LAYER - 1)
-	_light.shadow_caster_mask = 0xFFFFFFFF & ~(1 << (Player.BODY_LAYER - 1)) & ~view_bit
+	_light.shadow_caster_mask = 0xFFFFFFFF & ~(1 << (Player.BODY_LAYER - 1)) & ~(1 << (Player.HEAD_LAYER - 1)) & ~view_bit
 	_light.light_cull_mask = 0xFFFFFFFF & ~view_bit
 
 

@@ -25,6 +25,9 @@ const CRATES := [
 
 
 func _ready() -> void:
+	# Тестовая комната: светильник у героя с самого начала (на уровне его подбирают, scripts/lamp_pickup.gd)
+	GameState.has_lamp = true
+	$Player.set_lamp(true, true)
 	# Фон — цвет тумана, тогда даль сливается с дымкой
 	var env: Environment = $WorldEnvironment.environment
 	env.background_color = PsxMaterial.global_param("psx_fog_color")

@@ -81,10 +81,10 @@ const KINDS := {
 	# Полотно, которым накрыли убитого: кладётся поверх тела-модели (Corpses: corpse_laid) в ту же точку
 	"cover_cloth": {"collide": Vector3.ZERO},
 	# Ужас: кровь (тёмно-бордовая, не красная), святые прошли — пелены и пыль
-	"blood_pool": {"collide": Vector3.ZERO},
-	"blood_drag": {"collide": Vector3.ZERO},
-	"blood_steps": {"collide": Vector3.ZERO},
-	"blood_splatter": {"collide": Vector3.ZERO, "wall": true},
+	"blood_pool": {"collide": Vector3.ZERO, "mat": "blood"},
+	"blood_drag": {"collide": Vector3.ZERO, "mat": "blood"},
+	"blood_steps": {"collide": Vector3.ZERO, "mat": "blood"},
+	"blood_splatter": {"collide": Vector3.ZERO, "wall": true, "mat": "blood"},
 	# Тела унесли: куски следа волочения 0,6 × 2,4 м (кладутся цепочкой, DRAG_TRAILS). Четыре рисунка на своей
 	# текстуре с прозрачностью (trail_material): 1 — ровный след, 2 — с разрывом и отпечатком ладони, 3 — смаз,
 	# 4 — борозды от пяток и отпечатки ступней
@@ -175,8 +175,11 @@ static func material() -> ShaderMaterial:
 
 ## Материал предмета: у следов волочения — свой (текстура с прозрачностью), у остальных — общий атлас.
 static func material_for(kind: String) -> ShaderMaterial:
-	if (KINDS.get(kind, {}) as Dictionary).get("mat", "") == "trail":
-		return trail_material()
+	match (KINDS.get(kind, {}) as Dictionary).get("mat", ""):
+		"trail":
+			return trail_material()
+		"blood":
+			return blood_material()
 	return material()
 
 
@@ -211,8 +214,8 @@ static func _atlas() -> ImageTexture:
 		ProcTextures.mottled(64, Color(0.6, 0.45, 0.22), 0.06, 0.12, 74),          # METAL (бронза)
 		ProcTextures.mottled(64, Color(0.72, 0.48, 0.24), 0.08, 0.1, 75),          # FOOD
 		ProcTextures.stripes(64, 16, Color(0.56, 0.46, 0.26), Color(0.42, 0.33, 0.18), 76),  # PALM — увядшая, бурая
-		ProcTextures.mottled(64, Color(0.26, 0.035, 0.04), 0.05, 0.14, 77),        # BLOOD — тёмно-бордовая
-		ProcTextures.mottled(64, Color(0.15, 0.025, 0.03), 0.05, 0.12, 78),        # BLOOD_DARK — запёкшаяся
+		ProcTextures.mottled(64, Color(0.42, 0.045, 0.05), 0.05, 0.14, 77),        # BLOOD — тёмно-красная
+		ProcTextures.mottled(64, Color(0.31, 0.035, 0.042), 0.05, 0.12, 78),       # BLOOD_DARK — запёкшаяся
 		ProcTextures.with_grain(ProcTextures.stripes(64, 6, Color(0.86, 0.84, 0.78), Color(0.72, 0.7, 0.64), 79), "jogging_melange", 1.0, true),  # SHROUD — погребальные пелены
 		ProcTextures.mottled(64, Color(0.82, 0.81, 0.77), 0.05, 0.12, 80),         # DUST — погребальная пыль
 		_ph(ProcTextures.hemmed_cloth(64, Color(0.68, 0.48, 0.2), 6, 81), "hessian_380", Color(0.68, 0.48, 0.2), Vector2i(64, 0), false, 6),  # CLOTH_OCHRE
@@ -222,7 +225,7 @@ static func _atlas() -> ImageTexture:
 		ProcTextures.mottled(64, Color(0.62, 0.45, 0.34), 0.03, 0.06, 85),         # SKIN
 		ProcTextures.mottled(64, Color(0.13, 0.1, 0.08), 0.04, 0.06, 86),          # HAIR
 		ProcTextures.stripes(64, 10, Color(0.38, 0.42, 0.2), Color(0.5, 0.48, 0.26), 87),  # GRASS — сухая трава
-		ProcTextures.mottled(64, Color(0.07, 0.012, 0.016), 0.03, 0.08, 88),       # BLOOD_BLACK — середина лужи
+		ProcTextures.mottled(64, Color(0.22, 0.026, 0.032), 0.03, 0.08, 88),      # BLOOD_BLACK — самая тёмная, но не чёрная
 	]
 	var img := Image.create_empty(256, 64 * ATLAS_ROWS, false, Image.FORMAT_RGB8)
 	for i in tiles.size():
@@ -317,6 +320,45 @@ class PB:
 		quad(center - a - b, center + a - b, center + a + b, center - a + b, tile, true)
 
 	func commit() -> ArrayMesh:
+		return st.commit()
+
+
+## Построитель децалей крови: плоские квадраты с одной текстурой пятна (blood_material), вершинный цвет — прозрачность.
+class DB:
+	var st := SurfaceTool.new()
+	var xf := Transform3D()
+
+	func _init() -> void:
+		st.begin(Mesh.PRIMITIVE_TRIANGLES)
+
+	func _quad(p: Array, n: Vector3, a: float, flip: bool) -> void:
+		var uvs := [Vector2(0, 0), Vector2(1, 0), Vector2(1, 1), Vector2(0, 1)]
+		if flip:
+			uvs = [Vector2(1, 1), Vector2(0, 1), Vector2(0, 0), Vector2(1, 0)]
+		for k in [0, 1, 2, 0, 2, 3]:
+			st.set_color(Color(1.0, 1.0, 1.0, a))
+			st.set_normal(xf.basis * n)
+			st.set_uv(uvs[k])
+			st.add_vertex(xf * (p[k] as Vector3))
+
+	## Пятно на полу: центр, размер (по x и по z), поворот вокруг Y, прозрачность, зеркало текстуры.
+	func floor_spot(c: Vector3, w: float, l: float, yaw := 0.0, a := 1.0, flip := false) -> void:
+		var rot := Basis(Vector3.UP, yaw)
+		var hw := w * 0.5
+		var hl := l * 0.5
+		_quad([c + rot * Vector3(-hw, 0, -hl), c + rot * Vector3(hw, 0, -hl), c + rot * Vector3(hw, 0, hl),
+			c + rot * Vector3(-hw, 0, hl)], Vector3.UP, a, flip)
+
+	## Пятно на стене (смотрит в +Z, xf разворачивает): центр (x, y), размер, отступ от стены z, поворот в плоскости.
+	func wall_spot(c: Vector2, w: float, h: float, z: float, rot := 0.0, a := 1.0) -> void:
+		var r := Basis(Vector3.BACK, rot)
+		var hw := w * 0.5
+		var hh := h * 0.5
+		var o := Vector3(c.x, c.y, z)
+		_quad([o + r * Vector3(-hw, hh, 0), o + r * Vector3(hw, hh, 0), o + r * Vector3(hw, -hh, 0),
+			o + r * Vector3(-hw, -hh, 0)], Vector3.BACK, a, false)
+
+	func commit() -> Mesh:
 		return st.commit()
 
 
@@ -749,12 +791,12 @@ static func _make_blood_hands() -> Mesh:
 	for i in 5:
 		var x := -0.3 + i * 0.05 + rng.randf_range(-0.01, 0.01)
 		var top := rng.randf_range(1.5, 1.75)
-		var bot := top - rng.randf_range(0.5, 0.8)
+		var bot := top - rng.randf_range(0.12, 0.25)
 		b.quad(Vector3(x - 0.006, top, z), Vector3(x + 0.006, top, z), Vector3(x + 0.02 + 0.006, bot, z), Vector3(x + 0.02 - 0.006, bot, z),
 			Tile.BLOOD_DARK)
 	# Потёки вниз от ладоней
 	for hnd: Vector3 in hands:
-		var len := rng.randf_range(0.15, 0.45)
+		var len := rng.randf_range(0.06, 0.16)
 		b.quad(Vector3(hnd.x - 0.012, hnd.y - 0.05, z), Vector3(hnd.x + 0.012, hnd.y - 0.05, z),
 			Vector3(hnd.x + 0.006, hnd.y - 0.05 - len, z), Vector3(hnd.x - 0.006, hnd.y - 0.05 - len, z), Tile.BLOOD)
 	return b.commit()
@@ -1101,9 +1143,10 @@ static func _blob(b: PB, center: Vector3, rx: float, rz: float, tile: int, seed:
 		b.quad(center, p0, p1, center, tile)
 
 
-## Полоса волочения: тело тащили к двери (по −Z), полоса сужается и рвётся, по краям — следы пальцев.
+## Полоса волочения: тело тащили к двери (по −Z): цепочка перекрывающихся мягких пятен, сужается и рвётся,
+## по краям — короткие следы пальцев.
 static func _make_blood_drag() -> Mesh:
-	var b := PB.new()
+	var d := DB.new()
 	var rng := _rng(65)
 	var z := 1.4
 	var x := 0.0
@@ -1112,27 +1155,27 @@ static func _make_blood_drag() -> Mesh:
 		var z1 := z - rng.randf_range(0.18, 0.3)
 		var x1 := x + rng.randf_range(-0.05, 0.05)
 		var w1 := clampf(w + rng.randf_range(-0.06, 0.03), 0.12, 0.34)
-		b.quad(Vector3(x1 - w1 * 0.5, 0.013, z1), Vector3(x1 + w1 * 0.5, 0.013, z1), Vector3(x + w * 0.5, 0.013, z), Vector3(x - w * 0.5, 0.013, z),
-			Tile.BLOOD if rng.randf() < 0.7 else Tile.BLOOD_DARK)
+		d.floor_spot(Vector3((x + x1) * 0.5, 0.013, (z + z1) * 0.5), (w + w1) * 0.5 * 1.1, (z - z1) * 1.9, 0.0,
+			rng.randf_range(0.65, 0.95), rng.randf() < 0.5)
 		x = x1
 		z = z1
 		w = w1
-	_blob(b, Vector3(0, 0.012, 1.55), 0.35, 0.25, Tile.BLOOD_DARK, 66)
+	d.floor_spot(Vector3(0.0, 0.012, 1.55), 0.55, 0.4, 0.8)
 	for i in 4:
-		b.box(Vector3(-0.15 + i * 0.1, 0.013, -1.2 - rng.randf() * 0.2), Vector3(0.02, 0.002, 0.25), Tile.BLOOD)
-	return b.commit()
+		d.floor_spot(Vector3(-0.15 + i * 0.1, 0.013, -1.2 - rng.randf() * 0.15), 0.035, 0.22, 0.0, 0.85)
+	return d.commit()
 
 
-## Кровавые следы: цепочка отпечатков подошв уходит по −Z и бледнеет.
+## Кровавые следы: цепочка отпечатков подошв (пятка и носок — мягкие пятна) уходит по −Z и бледнеет.
 static func _make_blood_steps() -> Mesh:
-	var b := PB.new()
+	var d := DB.new()
 	for i in 8:
 		var side := -1.0 if i % 2 else 1.0
 		var c := Vector3(side * 0.12, 0.013, 1.6 - i * 0.45)
-		var t := Tile.BLOOD if i < 5 else Tile.BLOOD_DARK
-		b.box(c, Vector3(0.09, 0.002, 0.16), t, Basis(Vector3.UP, side * 0.1))
-		b.box(c + Vector3(0, 0, -0.13), Vector3(0.07, 0.002, 0.06), t)
-	return b.commit()
+		var fade := 1.0 - 0.6 * float(i) / 7.0
+		d.floor_spot(c, 0.11, 0.18, side * 0.1, fade)
+		d.floor_spot(c + Vector3(0.0, 0.0, -0.14), 0.09, 0.08, side * 0.1, fade)
+	return d.commit()
 
 
 ## Стол 0,7 м, опрокинутый ножками вверх.
@@ -1316,19 +1359,55 @@ static func _sandal(b: PB, at: Vector3, yaw: float) -> void:
 
 ## Размер куска следа волочения, м (ширина × длина), и его текстуры, пикселей на кусок.
 const TRAIL_SIZE := Vector2(0.6, 2.4)
-const TRAIL_TEX := Vector2i(64, 256)
+const TRAIL_TEX := Vector2i(32, 128)
 const TRAIL_VARIANTS := 4
 
 static var _trail_mat: ShaderMaterial
 
 
-## Материал следов волочения: psx-шейдер, текстура 256×256 с четырьмя рисунками (по столбцу 64×256 на кусок),
-## прозрачное отсекается (alpha_cut) — край следа рваный, дизером, а не ровной границей.
+## Материал следов волочения: шейдер крови (мягкий край, альфа-смешивание), текстура 128×128 с четырьмя рисунками
+## (по столбцу 32×128 на кусок), без дизеринга.
 static func trail_material() -> ShaderMaterial:
 	if _trail_mat == null:
-		_trail_mat = PsxMaterial.make(_trail_texture())
-		_trail_mat.set_shader_parameter("alpha_cut", 0.5)
+		_trail_mat = PsxMaterial.make_blood(_trail_texture())
 	return _trail_mat
+
+
+static var _blood_mat: ShaderMaterial
+
+
+## Материал крови на полу и стенах (лужи, брызги, полосы волочения, следы): одно пятно 32×32 с мягким краем.
+static func blood_material() -> ShaderMaterial:
+	if _blood_mat == null:
+		_blood_mat = PsxMaterial.make_blood(_blood_spot_texture())
+	return _blood_mat
+
+
+## Пятно крови 32×32: неровный контур (несколько гармоник по углу), мягкий край шириной ~4 пикселя (плавная альфа),
+## к середине темнее и гуще; без зерна, дизера и сетки. Цвет — тёмно-красный.
+static func _blood_spot_texture() -> ImageTexture:
+	var n := 32
+	var img := Image.create_empty(n, n, false, Image.FORMAT_RGBA8)
+	var rng := _rng(401)
+	var ph := [rng.randf() * TAU, rng.randf() * TAU, rng.randf() * TAU]
+	var noise := FastNoiseLite.new()
+	noise.noise_type = FastNoiseLite.TYPE_SIMPLEX_SMOOTH
+	noise.frequency = 0.07
+	noise.seed = 7
+	var edge := Color(0.46, 0.058, 0.064)
+	var core := Color(0.3, 0.03, 0.04)
+	for y in n:
+		for x in n:
+			var p := (Vector2(x + 0.5, y + 0.5) / n - Vector2(0.5, 0.5)) * 2.0
+			var d := p.length()
+			var ang := atan2(p.y, p.x)
+			var r := 0.6 + 0.09 * sin(2.0 * ang + ph[0]) + 0.07 * sin(3.0 * ang + ph[1]) + 0.04 * sin(5.0 * ang + ph[2])
+			var a := (1.0 - smoothstep(r - 0.24, r + 0.04, d)) * 0.94
+			var inner := smoothstep(r * 0.85, 0.05, d)
+			var shade := 0.93 + 0.14 * noise.get_noise_2d(x, y)
+			var c := edge.lerp(core, inner) * shade
+			img.set_pixel(x, y, Color(c.r, c.g, c.b, a))
+	return ImageTexture.create_from_image(img)
 
 
 ## Плавный шум по одной оси (значения 0…1 в узлах через 1, сглаженная интерполяция).
@@ -1345,13 +1424,13 @@ static func _noise1(x: float, seed: int) -> float:
 ## к краям — реже (дизер), ширина и сила гуляют, есть сухие разрывы и смазы, борозды от пяток; на втором куске —
 ## отпечаток ладони сбоку, на четвёртом — отпечатки ступней.
 static func _trail_texture() -> ImageTexture:
-	var w := TRAIL_TEX.x
-	var h := TRAIL_TEX.y
+	# Рисуем вдвое крупнее и сжимаем до TRAIL_TEX: край получается мягким, без дизера
+	var w := TRAIL_TEX.x * 2
+	var h := TRAIL_TEX.y * 2
 	var img := Image.create_empty(w * TRAIL_VARIANTS, h, false, Image.FORMAT_RGBA8)
-	img.fill(Color(0.1, 0.015, 0.02, 0.0))
-	var bayer := [0, 8, 2, 10, 12, 4, 14, 6, 3, 11, 1, 9, 15, 7, 13, 5]
-	var edge := Color(0.2, 0.03, 0.032)
-	var core := Color(0.04, 0.007, 0.011)
+	img.fill(Color(0.4, 0.05, 0.055, 0.0))
+	var edge := Color(0.42, 0.052, 0.058)
+	var core := Color(0.28, 0.03, 0.04)
 	for k in TRAIL_VARIANTS:
 		var seed := 300 + k * 17
 		var rng := _rng(seed)
@@ -1395,10 +1474,10 @@ static func _trail_texture() -> ImageTexture:
 		for y in h:
 			for x in w:
 				var a: float = a_map[y * w + x]
-				var grain := float(hash(Vector3i(x, y, seed)) % 100) / 99.0
-				var col := edge.lerp(core, smoothstep(0.3, 0.95, a * 1.25)) * (0.85 + 0.3 * grain)
-				var on := a * 1.7 > (float(bayer[(y % 4) * 4 + x % 4]) + 0.5) / 16.0 + 0.1
-				img.set_pixel(k * w + x, y, Color(col.r, col.g, col.b, 1.0 if on else 0.0))
+				var tone := 0.9 + 0.2 * _noise1(float(x) * 0.15 + float(y) * 0.05, seed + 9)
+				var col := edge.lerp(core, smoothstep(0.3, 0.95, a * 1.25)) * tone
+				img.set_pixel(k * w + x, y, Color(col.r, col.g, col.b, clampf(a * 1.5, 0.0, 1.0) * 0.94))
+	img.resize(TRAIL_TEX.x * TRAIL_VARIANTS, TRAIL_TEX.y, Image.INTERPOLATE_BILINEAR)
 	return ImageTexture.create_from_image(img)
 
 
@@ -1647,47 +1726,55 @@ static func _make_brazier_smoldering() -> Mesh:
 
 # ─── Кровь ───────────────────────────────────────────────────────────────────
 
-## Лужа крови: неровная, тёмная, почти чёрная в середине; кровь затекла в швы плит — тонкие прямые подтёки.
+## Лужа крови: плоские неровные пятна с мягким краем (децали blood_material, текстура 32×32): большое, поверх него
+## поменьше, брызги вокруг и короткие подтёки по швам плит. Цвет — тёмно-красный.
 static func _make_blood_pool() -> Mesh:
-	var b := PB.new()
-	_blob(b, Vector3(0, 0.011, 0), 0.5, 0.36, Tile.BLOOD_DARK, 61, 13)
-	_blob(b, Vector3(0.04, 0.014, 0.02), 0.34, 0.24, Tile.BLOOD_BLACK, 62, 10)
-	_blob(b, Vector3(0.38, 0.011, 0.2), 0.14, 0.1, Tile.BLOOD_DARK, 63, 7)
-	# Подтёки по швам плит: короткие узкие языки вдоль осей, от края лужи наружу, сходят на нет
-	var rng := _rng(64)
+	var d := DB.new()
+	var rng := _rng(61)
+	d.floor_spot(Vector3(0.0, 0.011, 0.0), 1.05, 0.78, 0.35)
+	d.floor_spot(Vector3(0.05, 0.012, 0.03), 0.66, 0.5, 2.0, 0.8, true)
+	d.floor_spot(Vector3(0.4, 0.011, 0.2), 0.3, 0.24, 0.6)
+	# Брызги вокруг: мелкие пятна разного размера
+	for i in 9:
+		var a := rng.randf() * TAU
+		var r := rng.randf_range(0.5, 0.85)
+		var sz := rng.randf_range(0.035, 0.11)
+		d.floor_spot(Vector3(cos(a) * r * 1.15, 0.011, sin(a) * r * 0.85), sz, sz * rng.randf_range(0.7, 1.3), rng.randf() * TAU,
+			rng.randf_range(0.7, 1.0), i % 2 == 0)
+	# Подтёки по швам плит: короткие узкие языки вдоль осей, от края лужи наружу
 	for i in 5:
 		var along_x := i % 2 == 0
 		var sgn := 1.0 if i < 3 else -1.0
-		var len := rng.randf_range(0.18, 0.35)
-		var edge := Vector3(0.45 * sgn, 0, rng.randf_range(-0.15, 0.15)) if along_x else Vector3(rng.randf_range(-0.25, 0.25), 0, 0.32 * sgn)
-		var c := edge + (Vector3(len * 0.5 * sgn, 0.012, 0) if along_x else Vector3(0, 0.012, len * 0.5 * sgn))
-		_blob(b, c, len * 0.5 if along_x else 0.014, 0.014 if along_x else len * 0.5, Tile.BLOOD_DARK, 130 + i, 6)
-	return b.commit()
+		var len := rng.randf_range(0.16, 0.3)
+		var edge := Vector3(0.45 * sgn, 0.0, rng.randf_range(-0.15, 0.15)) if along_x else Vector3(rng.randf_range(-0.25, 0.25), 0.0, 0.32 * sgn)
+		var c := edge + (Vector3(len * 0.5 * sgn, 0.012, 0.0) if along_x else Vector3(0.0, 0.012, len * 0.5 * sgn))
+		d.floor_spot(c, len if along_x else 0.05, 0.05 if along_x else len, 0.0, 0.85)
+	return d.commit()
 
 
-## Брызги на стене (точка у стены, смотрит в −Z): россыпь мелких капель вокруг места удара и тонкие потёки вниз.
+## Брызги на стене (точка у стены, смотрит в −Z): пятно удара, россыпь мелких капель вокруг и короткие подтёки вниз
+## (децали с мягким краем, не длинные линии).
 static func _make_blood_splatter() -> Mesh:
-	var b := PB.new()
-	b.xf = Transform3D(Basis(Vector3.UP, PI), Vector3.ZERO)
+	var d := DB.new()
+	d.xf = Transform3D(Basis(Vector3.UP, PI), Vector3.ZERO)
 	var rng := _rng(67)
 	var hit := Vector2(0.0, 1.3)
-	_blob_v(b, hit, 0.05, 0.04, 0.006, Tile.BLOOD_DARK, 74, 7)
-	for i in 34:
+	d.wall_spot(hit, 0.16, 0.13, 0.006, 0.4)
+	d.wall_spot(hit + Vector2(0.03, -0.02), 0.1, 0.09, 0.007, 1.9, 0.85)
+	for i in 30:
 		var a := rng.randf_range(-PI * 0.3, PI * 1.3)
-		var d := rng.randf_range(0.06, 0.5) * rng.randf_range(0.5, 1.0)
-		var c := hit + Vector2(cos(a) * d * 1.3, sin(a) * d * 0.8)
-		var s := rng.randf_range(0.006, 0.02) * (1.0 - d)
-		_blob_v(b, c, s, s * rng.randf_range(0.7, 1.3), 0.006, Tile.BLOOD_DARK if i % 3 else Tile.BLOOD, 75 + i, 5)
-	# Потёки вниз от места удара и самых крупных капель
-	for i in 6:
+		var dist := rng.randf_range(0.07, 0.5) * rng.randf_range(0.5, 1.0)
+		var c := hit + Vector2(cos(a) * dist * 1.3, sin(a) * dist * 0.8)
+		var sz := maxf(rng.randf_range(0.02, 0.06) * (1.0 - dist), 0.012)
+		d.wall_spot(c, sz, sz * rng.randf_range(0.7, 1.4), 0.006, rng.randf() * TAU, rng.randf_range(0.7, 1.0))
+	# Подтёки: короткие, вытянутые вниз пятна от места удара и самых крупных капель
+	for i in 5:
 		var x := hit.x + rng.randf_range(-0.12, 0.12)
-		var top := hit.y + rng.randf_range(-0.04, 0.03)
-		var len := rng.randf_range(0.25, 0.75)
-		var w := rng.randf_range(0.005, 0.01)
-		b.quad(Vector3(x - w, top, 0.007), Vector3(x + w, top, 0.007), Vector3(x + w * 0.5, top - len, 0.007),
-			Vector3(x - w * 0.5, top - len, 0.007), Tile.BLOOD_DARK)
-		_blob_v(b, Vector2(x, top - len), w * 1.6, w * 2.0, 0.007, Tile.BLOOD_DARK, 120 + i, 5)
-	return b.commit()
+		var top := hit.y + rng.randf_range(-0.05, 0.02)
+		var len := rng.randf_range(0.09, 0.2)
+		var w := rng.randf_range(0.025, 0.045)
+		d.wall_spot(Vector2(x, top - len * 0.5), w, len, 0.007, 0.0, 0.9)
+	return d.commit()
 
 
 # ─── Паника и святые ─────────────────────────────────────────────────────────

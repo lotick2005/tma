@@ -3,6 +3,7 @@ extends RefCounted
 ## Фабрика материалов на шейдере psx_lit и доступ к его глобальным параметрам.
 
 const SHADER: Shader = preload("res://shaders/psx_lit.gdshader")
+const BLOOD_SHADER: Shader = preload("res://shaders/blood_decal.gdshader")
 
 ## Значения глобальных параметров, изменённые во время игры (RenderingServer их обратно не отдаёт).
 static var _globals := {}
@@ -14,6 +15,14 @@ static func make(texture: Texture2D = null, color: Color = Color.WHITE) -> Shade
 	if texture:
 		mat.set_shader_parameter("albedo_texture", texture)
 	mat.set_shader_parameter("albedo_color", color)
+	return mat
+
+
+## Кровь на полу и стенах: шейдер blood_decal (мягкий край, альфа-смешивание), тот же PS1-вид.
+static func make_blood(texture: Texture2D) -> ShaderMaterial:
+	var mat := ShaderMaterial.new()
+	mat.shader = BLOOD_SHADER
+	mat.set_shader_parameter("albedo_texture", texture)
 	return mat
 
 

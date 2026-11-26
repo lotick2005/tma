@@ -14,11 +14,12 @@ signal blacked_out
 signal woke_up
 
 ## Шины, которые глохнут в черноте, и срез фильтра, Гц.
+const Sounds := preload("res://data/sounds.gd")
 const MUFFLE_BUSES := ["SFX", "Voices", "Ambience", "Angel"]
 const MUFFLE_CUTOFF := 380.0
 
-## Сколько длится чернота, с (вместе со звуками «сквозь вату»).
-@export var black_time := 5.5
+## Сколько длится чернота, с (вместе со звуками «сквозь вату»). Было 5,95 с (5,5 в параметре + затухание).
+@export var black_time := 3.0
 ## Глаза открываются: [доля открытия, за сколько с] по очереди — рывками, как во вступлении.
 @export var lids := [[0.25, 0.5], [0.0, 0.35], [0.55, 0.8], [0.35, 0.4], [1.0, 1.4]]
 ## Сколько секунд картинка мутная после того, как открыл глаза.
@@ -130,12 +131,12 @@ func pass_out(player: Player) -> void:
 				breath.queue_free())
 	_struggle_breath = null
 	var tw := create_tween()
-	tw.tween_property(_black, "color:a", 1.0, 0.45)
+	tw.tween_property(_black, "color:a", 1.0, 0.25)
 	await tw.finished
 	player.arms().set_struggle(false)
 	# Чернота: сердце медленно, глухие звуки издалека
 	_heartbeats(player, black_time)
-	await _wait(0.8)
+	await _wait(0.4)
 	blacked_out.emit()
 	if respawn_handler.is_valid():
 		respawn_handler.call()
@@ -148,9 +149,9 @@ func pass_out(player: Player) -> void:
 	player.set_lamp(false, true)
 	player.crouch(true)
 	player.set_look(player.get_look().x, -0.75)
-	await _wait(1.6)
+	await _wait(0.8)
 	AudioManager.play_3d("thud_far", player.global_position + Vector3(14.0, 1.0, -9.0), {"db": -6.0})
-	await _wait(maxf(black_time - 2.4, 0.5))
+	await _wait(maxf(black_time - 1.45, 0.5))
 	await wake(player)
 	busy = false
 
@@ -163,8 +164,14 @@ func wake(player: Player) -> void:
 	_black.color.a = 0.0
 	_blur.visible = true
 	(_blur.material as ShaderMaterial).set_shader_parameter("amount", 1.0)
+	# Звуки пробуждения — по очереди (data/sounds.gd WAKE): вдох сразу (SFX и голоса без приглушения), кряхтение через
+	# groan_delay, гул и ветер (Ambience) и Angel открываются позже и плавно
+	var wk: Dictionary = Sounds.WAKE
 	for b in MUFFLE_BUSES:
-		AudioManager.set_bus_muffled(b, false)
+		if b == "Ambience" or b == "Angel":
+			AudioManager.unmuffle_bus(b, float(wk.drone_delay), float(wk.drone_rise))
+		else:
+			AudioManager.set_bus_muffled(b, false)
 	var blur_tw := create_tween()
 	blur_tw.tween_method(func(a: float) -> void:
 		(_blur.material as ShaderMaterial).set_shader_parameter("amount", a), 1.0, 0.0, blur_time) \
@@ -174,14 +181,14 @@ func wake(player: Player) -> void:
 	var start_look := player.get_look()
 	for step: Array in lids:
 		if first:
-			AudioManager.play_2d("gasp_wake")
+			AudioManager.play_2d("gasp_wake", {"db": float(wk.gasp_db)})
+			get_tree().create_timer(float(wk.groan_delay), false).timeout.connect(func() -> void:
+				AudioManager.play_2d("wake_groan", {"rise": float(wk.groan_rise), "db": float(wk.groan_db)}))
 		var tw := create_tween()
 		tw.tween_method(_set_lids, open, float(step[0]), float(step[1])).set_trans(Tween.TRANS_SINE)
 		await tw.finished
 		open = step[0]
-		if first:
-			first = false
-			get_tree().create_timer(1.6).timeout.connect(func() -> void: AudioManager.play_2d("wake_groan"))
+		first = false
 	_top.visible = false
 	_bottom.visible = false
 	# Поднимает голову и встаёт
@@ -192,7 +199,9 @@ func wake(player: Player) -> void:
 	player.crouch(false)
 	AudioManager.play_2d("wake_groan", {"db": -3.0})
 	await _wait(0.6)
-	player.set_lamp(true)
+	# Светильник у героя в руке, только если он его уже подобрал (scripts/lamp_pickup.gd)
+	if GameState.has_lamp:
+		player.set_lamp(true)
 	await _wait(0.5)
 	player.set_locked(false)
 	woke_up.emit()

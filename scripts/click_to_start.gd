@@ -13,7 +13,8 @@ signal started
 var blocked := false
 
 var _started := false
-## Паузу поставил этот экран (а не записка, журнал или конец демо) — ему её и снимать.
+## Паузу держит этот экран (а не конец демо) — ему её и снимать. Если пауза началась поверх записки или журнала,
+## они закрываются, а пауза переходит к этому экрану.
 var _paused_here := false
 var _mouse_slider: HSlider
 var _volume_slider: HSlider
@@ -46,10 +47,17 @@ func _process(_delta: float) -> void:
 		if want == _resume_panel.visible:
 			return
 		_resume_panel.visible = want
-		if want and not get_tree().paused:
-			get_tree().paused = true
-			_paused_here = true
-		elif not want:
+		if want:
+			# Пауза не рисуется поверх записки и журнала: сначала они закрываются (пауза теперь — наша)
+			var closed := false
+			for n in get_tree().get_nodes_in_group("notes_ui"):
+				if n.is_open():
+					n.close_for_pause()
+					closed = true
+			if closed or not get_tree().paused:
+				get_tree().paused = true
+				_paused_here = true
+		else:
 			get_viewport().gui_release_focus()
 			if _paused_here:
 				_paused_here = false

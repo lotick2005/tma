@@ -20,8 +20,8 @@ extends RefCounted
 ##
 ## Баланс (доделка 5-5) — по замерам, а не на слух: docs/audio_levels.md (громкость файлов) и
 ## tools/audio/mix_table.py (что получается у слушателя: файл + db + затухание по расстоянию).
-## Лестница от тихого к громкому, дБFS у слушателя: ветер −43 · фон тьмы −38 (волны до −22) · дыхание −35 ·
-## свои шаги −30 · напев святого вплотную −31, с 6 м −35, с 12–15 м −43…−46 · базар днём −37 · паника −27 ·
+## Лестница от тихого к громкому, дБFS у слушателя: ветер −43 · фон тьмы −38 (волны до −22) · дыхание −36…−34 ·
+## свои шаги −33 (ходьба) / −32 (бег): не выше фона больше чем на 6 дБ (доделка 6, пункт 7) · напев святого вплотную −31, с 6 м −35, с 12–15 м −43…−46 · базар днём −37 · паника −27 ·
 ## удары, кувшин, крик вблизи −21…−17 · удар по голове −12. Меняешь файл — пересчитай db на ту же разницу.
 
 const _STEPS_STONE := [
@@ -222,9 +222,9 @@ const SOUNDS := {
 	# ─── Герой ────────────────────────────────────────────────────────────────────
 	## Шаги (записи, авторы — audio/CREDITS.md). Пока только камень: ходьба и присед, бег, ступени и лестницы.
 	## Свои шаги почти сухие (доля эха — HeroAudio.step_reverb) и чуть выше фона тьмы; дыхание — тише шагов.
-	"step_stone": {"file": _STEPS_STONE, "bus": "SFX", "db": -9.0, "db_rand": 2.0, "unit": 1.5, "range": 18.0, "pitch": 0.04},
-	"step_stone_run": {"file": _STEPS_STONE_RUN, "bus": "SFX", "db": -7.0, "db_rand": 2.0, "unit": 1.5, "range": 18.0, "pitch": 0.04},
-	"step_stairs": {"file": _STEPS_STAIRS, "bus": "SFX", "db": -4.5, "db_rand": 2.0, "unit": 1.5, "range": 18.0, "pitch": 0.04},
+	"step_stone": {"file": _STEPS_STONE, "bus": "SFX", "db": -12.0, "db_rand": 2.0, "unit": 1.5, "range": 18.0, "pitch": 0.04},
+	"step_stone_run": {"file": _STEPS_STONE_RUN, "bus": "SFX", "db": -11.5, "db_rand": 2.0, "unit": 1.5, "range": 18.0, "pitch": 0.04},
+	"step_stairs": {"file": _STEPS_STAIRS, "bus": "SFX", "db": -8.5, "db_rand": 2.0, "unit": 1.5, "range": 18.0, "pitch": 0.04},
 	## Заглушки других поверхностей — на потом (AudioManager.surfaces_enabled).
 	"step_earth": {"synth": "step_earth", "bus": "SFX", "db": -16.0, "variants": 5, "unit": 1.5, "range": 18.0, "pitch": 0.06},
 	"step_wood": {"synth": "step_wood", "bus": "SFX", "db": -17.0, "variants": 4, "unit": 1.5, "range": 18.0, "pitch": 0.05},
@@ -267,6 +267,23 @@ const SOUNDS := {
 	"alarm_door_creak": {"synth": "door_creak", "bus": "SFX", "db": -5.0, "variants": 3, "unit": 3.0, "range": 40.0, "pitch": 0.08},
 	"alarm_distant_thud": {"synth": "distant_thud", "bus": "SFX", "db": -18.0, "variants": 2, "unit": 6.0, "range": 60.0, "pitch": 0.1},
 	"alarm_shuffle": {"synth": "shuffle", "bus": "SFX", "db": -8.0, "variants": 3, "unit": 2.5, "range": 30.0, "pitch": 0.06},
+}
+
+## «Очнулся» (вступление и Awaken): три звука не разом, а по очереди; отсчёт — от момента, когда чернота уходит.
+## 1) вдох gasp_wake — сразу (резкий, как удар), на gasp_db дБ тише, чем в реестре;
+## 2) дыхание wake_groan — через groan_delay с, нарастает groan_rise с (groan_db — добавка к реестру: рост съедает начало);
+## 3) фон: гул ambient_drone и ветер wind_drone возвращаются через drone_delay с, нарастают drone_rise с;
+## хор молельни (3D, «dark») — ещё позже, через choir_delay с.
+## Числа подобраны по замерам (tools/audio/wake_levels.py): общий пик на 8 дБ ниже прежнего «всё разом»,
+## ни один из трёх не громче двух других вместе.
+const WAKE := {
+	"gasp_db": -9.0,
+	"groan_delay": 1.25,
+	"groan_rise": 1.0,
+	"groan_db": 3.0,
+	"drone_delay": 2.5,
+	"drone_rise": 2.0,
+	"choir_delay": 4.0,
 }
 
 ## Ложные тревоги: где-то в переулке вне поля зрения что-то звучит. Звуки — из SOUNDS.
