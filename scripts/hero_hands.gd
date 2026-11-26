@@ -84,6 +84,11 @@ func _on_footstep(mode: Player.MoveMode) -> void:
 			r = S.STEP_RADIUS.crouch
 		Player.MoveMode.RUN:
 			r = S.STEP_RADIUS.run
+	# Только что встал из приседа: шум шагов нарастает за STAND_RISE_TIME с от STAND_RISE_FROM м (ближе — слышно сразу)
+	if mode != Player.MoveMode.CROUCH:
+		var since := Time.get_ticks_msec() / 1000.0 - _player.stood_up_at
+		if since < S.STAND_RISE_TIME:
+			r = minf(r, lerpf(S.STAND_RISE_FROM, r, since / S.STAND_RISE_TIME))
 	NoiseSystem.make_noise(_player.global_position, r, "step", _player)
 
 

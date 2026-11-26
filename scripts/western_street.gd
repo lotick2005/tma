@@ -367,6 +367,12 @@ func _start_stealth() -> void:
 		var sn := _spawn_saint(e[0], cell_point(e[1], e[2]) + off, deg_to_rad(e[3]), pts, st)
 		if e[4] == "kneel":
 			sn.pray_anim = "pray_kneel"
+		elif e[4] == "watch":
+			var w: Dictionary = D.WATCH_SAINT
+			sn.pray_anim = w.anim
+			sn.hearing = w.hearing
+			sn.sight_close = w.sight_close
+			sn.lamp_sight = w.lamp_sight
 	_place_first_saint()
 	for e in D.CHECKPOINTS:
 		var area := Area3D.new()
