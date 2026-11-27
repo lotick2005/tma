@@ -87,7 +87,7 @@
 
 ## Четвёртый набор (27.11): огонь, засов, скрип дерева
 
-Нарезка и выравнивание — `tools/audio/pack4_sfx.py`. Моно, OGG Vorbis q4. В реестр `data/sounds.gd` ещё не вписаны.
+Нарезка и выравнивание — `tools/audio/pack4_sfx.py`. Моно, OGG Vorbis q4. В реестре `data/sounds.gd`: `fire_crackle`, `fire_crackle_far`, `bolt_clank`, `wood_strain`.
 
 | Файл | Источник (freesound.org) | Автор | Лицензия | Что изменено |
 |---|---|---|---|---|

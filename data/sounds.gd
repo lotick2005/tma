@@ -115,6 +115,14 @@ const _GROAN_PAIN := ["res://audio/groan_pain_01.ogg", "res://audio/groan_pain_0
 const _GATE_RATTLE := [
 	"res://audio/gate_rattle_01.ogg", "res://audio/gate_rattle_02.ogg", "res://audio/gate_rattle_03.ogg", "res://audio/gate_rattle_04.ogg",
 ]
+## Четвёртый набор (27.11): засов бьёт в скобу, балка скрипит под нагрузкой (крест поднимают).
+const _BOLT_CLANK := [
+	"res://audio/bolt_clank_01.ogg", "res://audio/bolt_clank_02.ogg", "res://audio/bolt_clank_03.ogg", "res://audio/bolt_clank_04.ogg",
+]
+const _WOOD_STRAIN := [
+	"res://audio/wood_strain_01.ogg", "res://audio/wood_strain_02.ogg", "res://audio/wood_strain_03.ogg",
+	"res://audio/wood_strain_04.ogg", "res://audio/wood_strain_05.ogg",
+]
 const _PARCHMENT := [
 	"res://audio/parchment_01.ogg", "res://audio/parchment_02.ogg", "res://audio/parchment_03.ogg", "res://audio/parchment_04.ogg",
 ]
@@ -262,8 +270,19 @@ const SOUNDS := {
 	## по одному (07–09 — уличные, далёкие), крик и стон, обряд (пение и стук, петля 30 с) + напевы святых.
 	## Цель у слушателя за скалой: молоток ≈ −36, крик ≈ −32, обряд ≈ −40 дБFS — тише фона, но различимо.
 	"gate_rattle": {"file": _GATE_RATTLE, "bus": "SFX", "db": -6.0, "unit": 3.0, "range": 30.0, "pitch": 0.04},
-	## Полировка демо 5: засов бьёт в скобу на каждом рывке — слышно, что заперто (заглушка, synth "bolt_clank").
-	"bolt_clank": {"synth": "bolt_clank", "bus": "SFX", "db": -3.0, "variants": 3, "unit": 3.0, "range": 30.0, "pitch": 0.03},
+	## Засов бьёт в скобу после каждого рывка — слышно, что заперто (запись четвёртого набора; заглушка synth "bolt_clank"
+	## осталась в sound_synth.gd). Чуть тише створки: створка гремит, засов отвечает.
+	"bolt_clank": {"file": _BOLT_CLANK, "bus": "SFX", "db": -5.0, "db_rand": 1.0, "unit": 3.0, "range": 30.0, "pitch": 0.03},
+	## Крест поднимают за скалой: балка скрипит под нагрузкой (по одному, с паузами; DemoEnd).
+	"wood_strain": {"file": _WOOD_STRAIN, "bus": "SFX", "db": 0.0, "db_rand": 1.0, "unit": 8.0, "range": 70.0, "pitch": 0.04},
+	## Треск огня — петля 24 с (у каждой жаровни свой случайный старт): жаровни у ворот Антонии (SOUND_SOURCES).
+	## Треск — щелчки с паузами: у слушателя в 1,5 м обычно ≈ −37, щелчки до −23 дБFS (фон тьмы −38, но он ниже
+	## 1,5 кГц, треск — выше: слышно поверх). Дальше 12 м не слышно.
+	"fire_crackle": {"file": "res://audio/fire_crackle_loop.ogg", "bus": "SFX", "db": 2.0, "loop": true,
+		"unit": 2.0, "range": 18.0},
+	## Тот же огонь за скалой в конце демо (≈15 м, DemoEnd прибавляет ROCK_DB): обычно ≈ −44, щелчки до −30 дБFS.
+	"fire_crackle_far": {"file": "res://audio/fire_crackle_loop.ogg", "bus": "SFX", "db": 0.0, "loop": true,
+		"unit": 8.0, "range": 70.0},
 	"hammer_far": {"file": _HAMMER_FAR, "bus": "SFX", "db": 2.0, "unit": 8.0, "range": 70.0, "pitch": 0.04},
 	"scream_pain": {"file": _SCREAM_PAIN, "bus": "Voices", "db": -2.0, "unit": 6.0, "range": 70.0, "pitch": 0.03},
 	"groan_pain": {"file": _GROAN_PAIN, "bus": "Voices", "db": 0.0, "unit": 6.0, "range": 60.0, "pitch": 0.03},

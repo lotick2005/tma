@@ -32,9 +32,9 @@ const MIN_SPEED := 0.6
 const GLANCE := 0.8
 const GLANCE_ALONG := 0.3
 ## Громкость материала: во сколько раз радиус больше, чем «скорость × вес».
-const LOUDNESS := {"clay": 5.0, "stone": 1.7, "wood": 1.6}
-## Звук удара по материалу (реестр data/sounds.gd): глина качнулась / покатилась, камень, дерево.
-const HIT_SOUND := {"clay": "pot_wobble", "stone": "stone_drop", "wood": "wood_fall"}
+const LOUDNESS := {"clay": 5.0, "stone": 1.7, "wood": 1.6, "cloth": 0.12}
+## Звук удара по материалу (реестр data/sounds.gd): глина качнулась / покатилась, камень, дерево, мешок (глухой стук).
+const HIT_SOUND := {"clay": "pot_wobble", "stone": "stone_drop", "wood": "wood_fall", "cloth": "body_fall"}
 ## Звук, когда глина разбилась: большой сосуд — pot_break, черепок — shard_break.
 const BREAK_SOUND := {"shard_piece": "shard_break"}
 ## Громкость звука удара: от radius = 0 до max_radius — от QUIET_DB до 0 дБ (добавка к реестру).
@@ -44,7 +44,7 @@ const SPAWN_QUIET := 1.0
 ## Сколько секунд после удара предмет молчит (чтобы дребезг не сыпал события каждый кадр).
 const HIT_COOLDOWN := 0.35
 
-## Виды предметов с физикой. mesh — меш PropLibrary; mass — кг; material — clay / stone / wood;
+## Виды предметов с физикой. mesh — меш PropLibrary; mass — кг; material — clay / stone / wood / cloth;
 ## shape — "cyl" [радиус, высота] (низ — в точке предмета), "box" [x, y, z] (низ в точке), "lump" [x, y, z] (середина в точке);
 ## max_radius — самый громкий удар, м; break_speed — глина бьётся при такой скорости удара (0 — не бьётся);
 ## break_radius — шум, когда разбилась, м; shards — сколько черепков (от–до);
@@ -62,8 +62,10 @@ const KINDS := {
 		"max_radius": 6.0, "break_speed": 3.2, "break_radius": 14.0, "shards": [2, 3], "pick": 1, "neck": [0.27, 0.045]},
 	"jar_large": {"mesh": "jar_large", "mass": 9.0, "material": "clay", "shape": "cyl", "size": [0.24, 0.8],
 		"max_radius": 8.0, "break_speed": 2.4, "break_radius": 16.0, "shards": [3, 4], "pick": 0, "bump": 1.7},
-	"stool": {"mesh": "stool", "mass": 2.5, "material": "wood", "shape": "box", "size": [0.36, 0.45, 0.3],
+	"stool": {"mesh": "stool", "mass": 2.5, "material": "wood", "shape": "box", "size": [0.31, 0.46, 0.3],
 		"max_radius": 6.0, "break_speed": 0.0, "pick": 0},
+	"sack": {"mesh": "sack", "mass": 18.0, "material": "cloth", "shape": "box", "size": [0.4, 0.58, 0.32],
+		"max_radius": 4.0, "break_speed": 0.0, "pick": 0, "bump": 0.45},
 }
 
 ## ─── Герой задевает предметы ────────────────────────────────────────────────

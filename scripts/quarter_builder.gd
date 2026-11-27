@@ -946,7 +946,8 @@ func _barricade(at: Vector3, yaw: float) -> void:
 	PropRegistry.add("table_tipped", Transform3D(basis, at + basis * Vector3(0.0, 0.0, 0.25)))
 	_b.add_mesh(PropLibrary.mesh("chest"), Transform3D(basis.rotated(Vector3.UP, 0.3), at + basis * Vector3(0.3, 0.0, -0.4)), mat)
 	_b.add_mesh(PropLibrary.mesh("jar_large"), Transform3D(basis, at + basis * Vector3(-0.55, 0.0, -0.3)), mat)
-	_b.add_mesh(PropLibrary.mesh("stool"), Transform3D(basis.rotated(Vector3.FORWARD, 1.4), at + basis * Vector3(-0.1, 0.62, 0.0)), mat)
+	_b.add_mesh(PropLibrary.mesh("stool"), Transform3D(basis.rotated(Vector3.FORWARD, 1.4), at + basis * Vector3(-0.1, 0.62, 0.0)),
+		PropLibrary.material_for("stool"))
 	_b.layer = layer_prev
 
 

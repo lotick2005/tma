@@ -215,7 +215,7 @@ func _update_held() -> void:
 		var mi := MeshInstance3D.new()
 		mi.mesh = PropLibrary.mesh(info.mesh)
 		# Обычный слой: свой светильник и свет вокруг освещают предмет так же, как всё остальное
-		mi.material_override = PropLibrary.material()
+		mi.material_override = PropLibrary.material_for(info.mesh)
 		mi.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
 		_player.add_child(mi)
 		mi.top_level = true

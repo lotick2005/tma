@@ -49,7 +49,7 @@ func setup(kind_name: String) -> void:
 	physics_material_override = pm
 	var mi := MeshInstance3D.new()
 	mi.mesh = PropLibrary.mesh(info.mesh)
-	mi.material_override = PropLibrary.material()
+	mi.material_override = PropLibrary.material_for(info.mesh)
 	add_child(mi)
 	var cs := CollisionShape3D.new()
 	var size: Array = info.size
