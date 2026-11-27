@@ -84,3 +84,13 @@
 «footsteps» — 1bob; «Footsteps stone floor» — HenKonen; «Walking up stone staircase» — Sadiquecat (просит формат: «… sound by Sadiquecat on Freesound.org in CC0 licence»); «Male_Breath_Fast_Loop_Stereo» — Nox_Sound. Фоны: «Morning Birds» — solarpsychedelic; «Drone-Horror Wind» — cat-fox_alex; «107 BPM Industrial Ambient Loop» — looplicator. Все — freesound.org, CC0.
 
 Просьбы автора klankbeeld (сверх лицензии): не использовать его звуки в стоковых библиотеках и не выкладывать «сырые» файлы отдельно (например, на YouTube). В игре — можно.
+
+## Четвёртый набор (27.11): огонь, засов, скрип дерева
+
+Нарезка и выравнивание — `tools/audio/pack4_sfx.py`. Моно, OGG Vorbis q4. В реестр `data/sounds.gd` ещё не вписаны.
+
+| Файл | Источник (freesound.org) | Автор | Лицензия | Что изменено |
+|---|---|---|---|---|
+| `fire_crackle_loop.ogg` | [Fire Crackle and Flames 001](https://freesound.org/s/363093/) | TheWoodlandNomad | [CC0](https://creativecommons.org/publicdomain/zero/1.0/) | Взято 2–28,5 с, срез ниже 90 Гц и выше 12 кГц, мягкий лимитер (щелчки сжаты, тело треска слышно), бесшовная петля 24 с (перекрёст 2,5 с), моно 32 кГц. Для жаровен (3D) и огня за скалой в конце демо |
+| `bolt_clank_01…04.ogg` | [metal hinge deadbolt latch slide open close door wall tight hallway echo](https://freesound.org/s/407320/) | kyles | ⏳ уточняется (у автора остальные звуки — [CC0](https://creativecommons.org/publicdomain/zero/1.0/)) | 4 удара засова с хвостом эха (~0,75 с), срез ниже 70 Гц, 96 → 44,1 кГц, громкость как у `gate_rattle`. Запертые ворота |
+| `wood_strain_01…05.ogg` | [Stepping on floorboards 2 (wood creak strain)](https://freesound.org/s/851663/) | peteratoner | ⏳ уточняется | Пять самых длинных скрипов (1,6–2,4 с), опущены на 4–6 полутонов (тяжёлая балка), срез ниже 60 Гц и выше 9 кГц, 48 → 44,1 кГц. Крест поднимают (конец демо, распятие на уровне 2) |
