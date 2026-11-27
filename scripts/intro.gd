@@ -135,7 +135,7 @@ func _add_day_prop(e: Array) -> void:
 	root.add_child(pivot)
 	var mi := MeshInstance3D.new()
 	mi.mesh = PropLibrary.mesh(kind)
-	mi.material_override = PropLibrary.material()
+	mi.material_override = PropLibrary.material_for(kind)
 	mi.position = Vector3(0.0, 0.0, -half)
 	pivot.add_child(mi)
 	if size != Vector3.ZERO:

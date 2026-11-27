@@ -125,7 +125,8 @@ func place(kind: String, pos: Vector3, yaw: float, indoor: bool = false, scale: 
 	var xf := Transform3D(Basis(Vector3.UP, yaw).scaled(Vector3.ONE * scale), pos)
 	PropRegistry.add(kind, xf)
 	_b.layer = LevelBuilder.INTERIOR_LAYER if indoor else 1
-	var mat: Material = PropLibrary.material_for(kind) if inf.has("mat") else _mat
+	# Атлас, своя текстура следов крови или модели (KINDS: mat, model)
+	var mat: Material = PropLibrary.material_for(kind) if inf.has("mat") or inf.has("model") else _mat
 	if inf.get("mm", false):
 		_b.add_instance(PropLibrary.mesh(kind), xf, mat)
 	else:
@@ -141,6 +142,9 @@ func place(kind: String, pos: Vector3, yaw: float, indoor: bool = false, scale: 
 	for sm: Array in inf.get("smoke", []):
 		_glows.add_smoke(xf * (sm[0] as Vector3), sm[1])
 	_b.layer = 1
+	# Что стоит вместе с предметом (корзина под плодами, череп в оссуарии)
+	for al: Array in inf.get("also", []):
+		place(al[0], xf * (al[1] as Vector3), yaw + float(al[2]), indoor, scale)
 
 
 func _mark_clear() -> void:

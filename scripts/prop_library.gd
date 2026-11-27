@@ -5,6 +5,9 @@ extends RefCounted
 ## куска уровня рисуется за один вызов. Меш каждого предмета строится один раз и кешируется.
 ## Предмет в редакторе — сцена res://scenes/props/prop.tscn (поле kind), все сразу — catalog.tscn.
 ## Новый предмет: функция _make_<имя>() ниже + строка в KINDS.
+## Предметы-модели (models/prop_*.glb из Meshy, models/CREDITS.md «Предметы»): в KINDS поле "model" — имя файла;
+## _make_<имя>() запекает меш модели в нужную позу (_model), материал — PS1 с текстурой модели
+## (CharacterModel.material, как у светильника oil_lamp.glb), не атлас: такие предметы рисуются своим вызовом на кусок.
 
 ## Плитки атласа (4 в ряд, ATLAS_ROWS рядов по 64 пикселя).
 enum Tile { CLAY, CLAY_DARK, WOOD, WOOD_DARK, LINEN, CLOTH_RED, CLOTH_BLUE, STRAW, SACK, STONE, BASALT, LEAF, BARK, METAL, FOOD, PALM,
@@ -16,6 +19,9 @@ const ATLAS_ROWS := 8
 ## Свойства предметов: collide — размер коробки коллизии (ноль — без неё, можно пройти/перешагнуть), collide_at — её сдвиг;
 ## mm — часто повторяется, рисуется через MultiMeshInstance3D; wall — вешается на стену (точка — у стены);
 ## glow — огоньки (Glows): [точка в координатах предмета, радиус м, яркость, true — виден издалека];
+## model — меш и текстура из models/<model>.glb (материал свой, см. выше);
+## also — что ставится вместе с предметом: [[вид, сдвиг в координатах предмета, поворот рад], …] (корзина под плодами,
+## череп в оссуарии) — у части из модели и у части из атласа разные материалы, поэтому это два вида;
 ## smoke — дым (Glows): [точка, радиус клуба м].
 ## Масштаб — по человеку (герой 1,75 м): стол 0,7 м, табурет 0,45 м, большой кувшин 0,8 м, дверь 2,1 м;
 ## низкий стол для трапезы лёжа — 0,4 м. Всё видно рядом с фигурой героя в каталоге (scenes/props/catalog.tscn).
@@ -25,8 +31,8 @@ const KINDS := {
 	"jar_large": {"collide": Vector3(0.5, 0.75, 0.5)},
 	"jug": {"collide": Vector3.ZERO, "mm": true},
 	"stone_vessel": {"collide": Vector3.ZERO},
-	"basket": {"collide": Vector3.ZERO},
-	"sack": {"collide": Vector3(0.45, 0.6, 0.45)},
+	"basket": {"collide": Vector3.ZERO, "model": "prop_basket"},
+	"sack": {"collide": Vector3(0.45, 0.6, 0.45), "model": "prop_sack"},
 	"mat_rolled": {"collide": Vector3.ZERO},
 	"mat": {"collide": Vector3.ZERO},
 	"lamp_niche": {"collide": Vector3.ZERO, "wall": true},
@@ -47,8 +53,8 @@ const KINDS := {
 	"weights": {"collide": Vector3.ZERO},
 	"crate": {"collide": Vector3(0.6, 0.5, 0.5)},
 	"fruit": {"collide": Vector3.ZERO, "mm": true},
-	"basket_pomegranates": {"collide": Vector3.ZERO},
-	"basket_figs": {"collide": Vector3.ZERO},
+	"basket_pomegranates": {"collide": Vector3.ZERO, "also": [["basket", Vector3.ZERO, 0.0]]},
+	"basket_figs": {"collide": Vector3.ZERO, "also": [["basket", Vector3.ZERO, 0.0]]},
 	"coins": {"collide": Vector3.ZERO, "mm": true},
 	"stall_overturned": {"collide": Vector3(2.0, 0.9, 1.1)},
 	# Полотнища на каркасах лотков и высыпанное зерно (полировка демо 4); точка — та же, что у лотка (stall), тот же поворот
@@ -107,7 +113,7 @@ const KINDS := {
 	"scorch_silhouette": {"collide": Vector3.ZERO, "wall": true},
 	# Рука свисает с края крыши (одноэтажный дом, парапет на 4,5 м); растоптанная корзина
 	"hand_hanging": {"collide": Vector3.ZERO, "wall": true},
-	"basket_crushed": {"collide": Vector3.ZERO, "mm": true},
+	"basket_crushed": {"collide": Vector3.ZERO, "mm": true, "model": "prop_basket"},
 	"shroud_strip": {"collide": Vector3.ZERO},
 	"burial_dust": {"collide": Vector3.ZERO},
 	"table_overturned": {"collide": Vector3(1.1, 0.75, 0.65)},
@@ -131,12 +137,12 @@ const KINDS := {
 	"fig_tree": {"collide": Vector3(0.5, 2.0, 0.5)},
 	"pergola": {"collide": Vector3.ZERO},
 	# Римское
-	"shield": {"collide": Vector3.ZERO},
-	"shield_leaning": {"collide": Vector3.ZERO, "wall": true},
-	"spear_broken": {"collide": Vector3.ZERO},
+	"shield": {"collide": Vector3.ZERO, "model": "prop_shield"},
+	"shield_leaning": {"collide": Vector3.ZERO, "wall": true, "model": "prop_shield"},
+	"spear_broken": {"collide": Vector3.ZERO, "model": "prop_spear"},
 	"helmet": {"collide": Vector3.ZERO},
-	"spear": {"collide": Vector3.ZERO},
-	"spear_fallen": {"collide": Vector3.ZERO},
+	"spear": {"collide": Vector3.ZERO, "model": "prop_spear"},
+	"spear_fallen": {"collide": Vector3.ZERO, "model": "prop_spear"},
 	"caliga": {"collide": Vector3.ZERO, "mm": true},
 	"brazier_overturned": {"collide": Vector3.ZERO,
 		"glow": [[Vector3(0.5, 0.05, 0.2), 0.08, 0.7], [Vector3(0.8, 0.04, -0.1), 0.06, 0.5], [Vector3(0.35, 0.05, -0.25), 0.07, 0.6]]},
@@ -158,7 +164,7 @@ const KINDS := {
 	"chest": {"collide": Vector3(0.9, 0.55, 0.5)},
 	# Интерьер
 	"table_low": {"collide": Vector3(1.0, 0.4, 0.6)},
-	"stool": {"collide": Vector3.ZERO},
+	"stool": {"collide": Vector3.ZERO, "model": "prop_stool"},
 	"loom": {"collide": Vector3(1.4, 1.8, 0.5)},
 	"oven": {"collide": Vector3(0.8, 0.6, 0.8)},
 	"quern": {"collide": Vector3.ZERO},
@@ -167,6 +173,10 @@ const KINDS := {
 	"shard_piece": {"collide": Vector3.ZERO},
 	"stone_throw": {"collide": Vector3.ZERO},
 	"stone_held": {"collide": Vector3.ZERO},
+	# Открытый оссуарий (маленькая история, CLAUDE.md §6): каменный ящик для костей, крышка сдвинута и лежит рядом,
+	# внутри кости и череп (череп — модель, отдельным видом). Точка — у стены (задняя сторона ящика к +Z).
+	"ossuary": {"collide": Vector3(0.62, 0.32, 0.32), "also": [["skull", Vector3(0.14, 0.13, 0.0), 2.6]]},
+	"skull": {"collide": Vector3.ZERO, "model": "prop_skull"},
 }
 
 static var _material: ShaderMaterial
@@ -180,9 +190,13 @@ static func material() -> ShaderMaterial:
 	return _material
 
 
-## Материал предмета: у следов волочения — свой (текстура с прозрачностью), у остальных — общий атлас.
+## Материал предмета: у следов волочения — свой (текстура с прозрачностью), у моделей — своя текстура,
+## у остальных — общий атлас.
 static func material_for(kind: String) -> ShaderMaterial:
-	match (KINDS.get(kind, {}) as Dictionary).get("mat", ""):
+	var inf: Dictionary = KINDS.get(kind, {})
+	if inf.has("model"):
+		return CharacterModel.material(inf.model)
+	match inf.get("mat", ""):
 		"trail":
 			return trail_material()
 		"blood":
@@ -199,6 +213,143 @@ static func mesh(kind: String) -> Mesh:
 
 static func info(kind: String) -> Dictionary:
 	return KINDS.get(kind, {})
+
+
+# ─── Предметы-модели ─────────────────────────────────────────────────────────
+
+## Меш модели models/<name>.glb, запечённый в позу xf (поворот, сдвиг, масштаб — в координатах предмета).
+static func _model(name: String, xf := Transform3D()) -> ArrayMesh:
+	return _model_parts(name, [[xf, Vector2(-INF, INF)]])
+
+
+## Несколько копий модели в одном меше: [[xf, от–до по X модели (Vector2)], …]. Отрезок по X режет треугольники
+## по плоскости (обломки копья); срез не закрывается — на тонком древке дыры не видно.
+## Нормалей в файлах нет — считаются заново, сглаженные (где у соседних треугольников общие вершина и uv).
+static func _model_parts(name: String, parts: Array) -> ArrayMesh:
+	var inst: Node = (load(CharacterModel.MODEL_DIR + name + ".glb") as PackedScene).instantiate()
+	var mi: MeshInstance3D = inst.find_children("*", "MeshInstance3D", true, false)[0]
+	var arr: Array = mi.mesh.surface_get_arrays(0)
+	var own := mi.transform
+	inst.free()
+	var verts: PackedVector3Array = arr[Mesh.ARRAY_VERTEX]
+	var uvs: PackedVector2Array = arr[Mesh.ARRAY_TEX_UV]
+	var idx: PackedInt32Array = arr[Mesh.ARRAY_INDEX] if arr[Mesh.ARRAY_INDEX] != null else PackedInt32Array()
+	if idx.is_empty():
+		for i in verts.size():
+			idx.append(i)
+	var st := SurfaceTool.new()
+	st.begin(Mesh.PRIMITIVE_TRIANGLES)
+	for part: Array in parts:
+		var xf: Transform3D = (part[0] as Transform3D) * own
+		var cut: Vector2 = part[1]
+		for t in range(0, idx.size(), 3):
+			# Вершина многоугольника: [точка, uv] в координатах модели
+			var poly := []
+			for k in 3:
+				var i := idx[t + k]
+				poly.append([verts[i], uvs[i]])
+			if cut.x > -INF:
+				poly = _clip_x(poly, cut.x, 1.0)
+			if cut.y < INF and poly.size() >= 3:
+				poly = _clip_x(poly, cut.y, -1.0)
+			for k in range(1, poly.size() - 1):
+				for v: Array in [poly[0], poly[k], poly[k + 1]]:
+					st.set_uv(v[1])
+					st.add_vertex(xf * (v[0] as Vector3))
+	st.index()
+	st.generate_normals()
+	return st.commit()
+
+
+## Отрезать от многоугольника всё, где side × (x − at) < 0 (Сазерленд — Ходжмен; uv — по интерполяции).
+static func _clip_x(poly: Array, at: float, side: float) -> Array:
+	var out := []
+	for i in poly.size():
+		var a: Array = poly[i]
+		var b: Array = poly[(i + 1) % poly.size()]
+		var da: float = side * ((a[0] as Vector3).x - at)
+		var db: float = side * ((b[0] as Vector3).x - at)
+		if da >= 0.0:
+			out.append(a)
+		if (da >= 0.0) != (db >= 0.0):
+			var f := da / (da - db)
+			out.append([(a[0] as Vector3).lerp(b[0], f), (a[1] as Vector2).lerp(b[1], f)])
+	return out
+
+
+## Череп без нижней челюсти (модель prop_skull, 0,2 м; лицо — к +Z). Ставится в оссуарий (KINDS ossuary: also).
+static func _make_skull() -> Mesh:
+	return _model("prop_skull")
+
+
+## Оссуарий — известняковый ящик для костей 0,6 × 0,3 × 0,3 м (задняя стенка — к +Z, к стене), на передней стенке
+## резьба: рамка и две шестилепестковые розетки (циркульные дуги, процарапаны тёмным). Крышка сдвинута и лежит
+## на полу перед ящиком, одним краем на обломке. Внутри — кости (цилиндры с утолщениями) кучей; череп — отдельно (skull).
+static func _make_ossuary() -> Mesh:
+	var b := PB.new()
+	var w := 0.6
+	var d := 0.3
+	var h := 0.3
+	var t := 0.035
+	# Дно и четыре стенки (тонкие ящики — внутренние грани видны сверху)
+	b.box(Vector3(0, 0.02, 0), Vector3(w, 0.04, d), Tile.STONE)
+	b.box(Vector3(0, h * 0.5, -d * 0.5 + t * 0.5), Vector3(w, h, t), Tile.STONE)
+	b.box(Vector3(0, h * 0.5, d * 0.5 - t * 0.5), Vector3(w, h, t), Tile.STONE)
+	b.box(Vector3(-w * 0.5 + t * 0.5, h * 0.5, 0), Vector3(t, h, d - t * 2.0), Tile.STONE)
+	b.box(Vector3(w * 0.5 - t * 0.5, h * 0.5, 0), Vector3(t, h, d - t * 2.0), Tile.STONE)
+	# Ножки-выступы снизу по углам
+	for x in [-1.0, 1.0]:
+		for z in [-1.0, 1.0]:
+			b.box(Vector3(x * (w * 0.5 - 0.04), 0.01, z * (d * 0.5 - 0.03)), Vector3(0.07, 0.02, 0.05), Tile.STONE)
+	# Резьба на передней стенке (лицо — −Z): канавки чуть выступают над гранью
+	var fz := -d * 0.5 - 0.002
+	var groove := func(p0: Vector2, p1: Vector2) -> void:
+		var m := (p0 + p1) * 0.5
+		var dir := p1 - p0
+		b.box(Vector3(m.x, m.y, fz), Vector3(dir.length() + 0.006, 0.006, 0.004), Tile.BASALT,
+			Basis(Vector3.BACK, atan2(dir.y, dir.x)))
+	# Рамка
+	var fr := [Vector2(-0.27, 0.035), Vector2(0.27, 0.035), Vector2(0.27, 0.27), Vector2(-0.27, 0.27)]
+	for i in 4:
+		groove.call(fr[i], fr[(i + 1) % 4])
+	# Две розетки: окружность радиуса r и шесть дуг того же радиуса с центрами на ней
+	for cx in [-0.13, 0.13]:
+		var c := Vector2(cx, 0.152)
+		var r := 0.085
+		for i in 16:
+			groove.call(c + Vector2.from_angle(TAU * i / 16.0) * r, c + Vector2.from_angle(TAU * (i + 1) / 16.0) * r)
+		for k in 6:
+			var q := c + Vector2.from_angle(TAU * k / 6.0) * r
+			var a0 := TAU * k / 6.0 + PI * 2.0 / 3.0
+			for j in 4:
+				var p0 := q + Vector2.from_angle(a0 + (PI * 2.0 / 3.0) * j / 4.0) * r
+				var p1 := q + Vector2.from_angle(a0 + (PI * 2.0 / 3.0) * (j + 1) / 4.0) * r
+				groove.call(p0, p1)
+	# Кости внутри: длинные (бедро, голень, плечо) кучей вдоль ящика, сверху несколько поперёк, мелкие
+	var rng := _rng(311)
+	var bones := [[0.44, 0.05, 0.0], [0.4, 0.06, 0.06], [0.36, 0.07, -0.06], [0.42, 0.11, 0.03], [0.3, 0.12, -0.04],
+		[0.34, 0.15, 0.05], [0.26, 0.17, -0.02]]
+	for i in bones.size():
+		var bn: Array = bones[i]
+		var bl: float = bn[0]
+		var yaw := rng.randf_range(-0.25, 0.25) + (PI * 0.5 if i == 4 else 0.0)
+		var basis := Basis(Vector3.UP, yaw) * Basis(Vector3.BACK, PI * 0.5 + rng.randf_range(-0.12, 0.12))
+		var c := Vector3(rng.randf_range(-0.05, 0.05) if i != 4 else -0.15, bn[1], bn[2])
+		if i == 4:
+			bl = 0.2
+		b.lathe([Vector2(0.0, -bl * 0.5), Vector2(0.022, -bl * 0.5), Vector2(0.026, -bl * 0.5 + 0.03),
+			Vector2(0.012, -bl * 0.5 + 0.06), Vector2(0.011, bl * 0.5 - 0.06), Vector2(0.024, bl * 0.5 - 0.025),
+			Vector2(0.02, bl * 0.5), Vector2(0.0, bl * 0.5)], 6, Tile.DUST, c, basis)
+	for i in 8:
+		var c := Vector3(rng.randf_range(-0.22, 0.22), rng.randf_range(0.09, 0.15), rng.randf_range(-0.09, 0.09))
+		b.box(c, Vector3(0.05, 0.018, 0.022), Tile.DUST, Basis(Vector3.UP, rng.randf() * TAU) * Basis(Vector3.RIGHT, rng.randf_range(-0.5, 0.5)))
+	# Крышка: плоская плита с покатым верхом, сдвинута — лежит перед ящиком, одним краем на обломке
+	var lid := Basis(Vector3.UP, 0.22) * Basis(Vector3.BACK, 0.09)
+	var lc := Vector3(0.06, 0.05, -0.43)
+	b.box(Vector3(0.33, 0.025, -0.47), Vector3(0.06, 0.05, 0.07), Tile.STONE, Basis(Vector3.UP, 0.6))
+	b.box(lc, Vector3(w + 0.02, 0.035, d + 0.02), Tile.STONE, lid)
+	b.box(lc + lid * Vector3(0, 0.03, 0), Vector3(w - 0.04, 0.025, d - 0.1), Tile.STONE, lid)
+	return b.commit()
 
 
 # ─── Атлас ───────────────────────────────────────────────────────────────────
@@ -413,18 +564,14 @@ static func _make_stone_vessel() -> Mesh:
 	return b.commit()
 
 
+## Корзина (модель prop_basket: Ø 0,41, выс. 0,32).
 static func _make_basket() -> Mesh:
-	var b := PB.new()
-	b.lathe([Vector2(0, 0), Vector2(0.18, 0), Vector2(0.22, 0.22), Vector2(0.24, 0.26), Vector2(0.2, 0.26),
-		Vector2(0.17, 0.06), Vector2(0, 0.06)], 8, Tile.STRAW)
-	return b.commit()
+	return _model("prop_basket")
 
 
+## Мешок с зерном, завязан (модель prop_sack, выс. 0,6).
 static func _make_sack() -> Mesh:
-	var b := PB.new()
-	b.lathe([Vector2(0, 0), Vector2(0.18, 0), Vector2(0.23, 0.15), Vector2(0.22, 0.38), Vector2(0.12, 0.5),
-		Vector2(0.05, 0.53), Vector2(0.07, 0.6), Vector2(0, 0.58)], 6, Tile.SACK, Vector3.ZERO, Basis(), Vector2(1.0, 0.8))
-	return b.commit()
+	return _model("prop_sack")
 
 
 static func _make_mat_rolled() -> Mesh:
@@ -802,22 +949,15 @@ static func _make_helmet() -> Mesh:
 	return b.commit()
 
 
+## Копьё прислонено к стене: точка — у стены, древко наклонено к ней (модель prop_spear: вдоль X, наконечник — +X).
 static func _make_spear() -> Mesh:
-	var b := PB.new()
-	# Прислонено к стене: точка — у стены, древко наклонено к ней
 	var lean := Basis(Vector3.RIGHT, -0.2)
-	b.box(Vector3(0, 1.0, -0.2), Vector3(0.04, 2.0, 0.04), Tile.WOOD, lean)
-	b.box(lean * Vector3(0, 2.1, 0) + Vector3(0, 0, -0.2), Vector3(0.05, 0.25, 0.015), Tile.METAL, lean)
-	return b.commit()
+	return _model("prop_spear", Transform3D(lean * Basis(Vector3.BACK, PI * 0.5), lean * Vector3(0.0, 0.99, 0.0)))
 
 
-## Копьё, упавшее на мостовую.
+## Копьё, упавшее на мостовую: вдоль Z, наконечник — к −Z.
 static func _make_spear_fallen() -> Mesh:
-	var b := PB.new()
-	b.box(Vector3(0, 0.025, 0), Vector3(0.04, 0.04, 2.0), Tile.WOOD)
-	b.box(Vector3(0, 0.02, -1.12), Vector3(0.06, 0.015, 0.25), Tile.METAL)
-	b.box(Vector3(0, 0.025, 1.02), Vector3(0.045, 0.045, 0.06), Tile.METAL)
-	return b.commit()
+	return _model("prop_spear", Transform3D(Basis(Vector3.UP, PI * 0.5), Vector3(0.0, 0.002, 0.0)))
 
 
 ## Калига: солдатская сандалия на толстой подошве с ремешками, слетела с ноги на бегу.
@@ -927,13 +1067,9 @@ static func _make_table_low() -> Mesh:
 	return b.commit()
 
 
-## Табурет 0,45 м.
+## Табурет 0,46 м (модель prop_stool).
 static func _make_stool() -> Mesh:
-	var b := PB.new()
-	b.box(Vector3(0, 0.43, 0), Vector3(0.36, 0.045, 0.3), Tile.WOOD)
-	for p in [Vector2(-0.14, -0.11), Vector2(0.14, -0.11), Vector2(0.14, 0.11), Vector2(-0.14, 0.11)]:
-		b.box(Vector3(p.x, 0.205, p.y), Vector3(0.045, 0.41, 0.045), Tile.WOOD_DARK)
-	return b.commit()
+	return _model("prop_stool")
 
 
 ## Стол 0,7 м (кухня, мастерская, дом).
@@ -1042,15 +1178,14 @@ static func _make_basket_figs() -> Mesh:
 	return _fruit_basket(Tile.BASALT, 0.035, 43)
 
 
+## Плоды горкой; сама корзина — модель (вид basket, KINDS: also), её край — на 0,32 м.
 static func _fruit_basket(tile: int, r: float, seed: int) -> Mesh:
 	var b := PB.new()
-	b.lathe([Vector2(0, 0), Vector2(0.18, 0), Vector2(0.22, 0.22), Vector2(0.24, 0.26), Vector2(0.2, 0.26),
-		Vector2(0.17, 0.06), Vector2(0, 0.06)], 8, Tile.STRAW)
 	var rng := _rng(seed)
 	for i in 9:
 		var a := rng.randf() * TAU
 		var d := rng.randf() * 0.15
-		var y := 0.2 + (0.15 - d) * 0.4 + rng.randf() * 0.03
+		var y := 0.26 + (0.15 - d) * 0.4 + rng.randf() * 0.03
 		b.lathe([Vector2(0, -r), Vector2(r, -r * 0.3), Vector2(r * 0.9, r * 0.5), Vector2(0, r)], 5, tile,
 			Vector3(cos(a) * d, y, sin(a) * d))
 	return b.commit()
@@ -1694,87 +1829,33 @@ static func _make_hand_hanging() -> Mesh:
 	return b.commit()
 
 
-## Растоптанная корзина: сплющена, прутья разошлись.
+## Растоптанная корзина: модель корзины, сплющенная и перекошенная.
 static func _make_basket_crushed() -> Mesh:
-	var b := PB.new()
-	b.lathe([Vector2(0, 0), Vector2(0.2, 0), Vector2(0.27, 0.05), Vector2(0.25, 0.075), Vector2(0.14, 0.05), Vector2(0, 0.04)],
-		8, Tile.STRAW, Vector3.ZERO, Basis(Vector3.UP, 0.4), Vector2(1.25, 0.85))
-	var rng := _rng(170)
-	for i in 5:
-		var a := rng.randf() * TAU
-		var c := Vector3(cos(a), 0, sin(a)) * rng.randf_range(0.28, 0.42)
-		b.box(c + Vector3.UP * 0.008, Vector3(0.012, 0.008, rng.randf_range(0.14, 0.24)), Tile.STRAW, Basis(Vector3.UP, rng.randf() * TAU))
-	return b.commit()
+	var squash := Basis(Vector3.BACK, 0.12) * Basis(Vector3.UP, 0.4) * Basis.from_scale(Vector3(1.2, 0.3, 1.05))
+	return _model("prop_basket", Transform3D(squash, Vector3(0.0, 0.01, 0.0)))
 
 
 # ─── Римское ─────────────────────────────────────────────────────────────────
 
-## Плоский овальный щит ауксилия 1,1×0,6 м: окрашенная кожа на досках, железный умбон, окантовка, вмятины.
-## Свой каркас: длинная ось — Z, лицо — +Y.
-static func _shield_body(b: PB, seed: int) -> void:
-	var rng := _rng(seed)
-	var sides := 12
-	var rings := [0.0, 0.45, 0.8, 1.0]
-	var pts := []
-	for k in rings.size():
-		var row := []
-		for i in sides:
-			var a := TAU * i / sides
-			var r: float = rings[k]
-			var bulge := 0.05 * (1.0 - r * r)
-			if k > 0 and rng.randf() < 0.25:
-				bulge -= 0.025
-			row.append(Vector3(cos(a) * 0.3 * r, bulge, sin(a) * 0.55 * r))
-		pts.append(row)
-	for k in rings.size() - 1:
-		for i in sides:
-			var a0: Vector3 = pts[k][i]
-			var a1: Vector3 = pts[k][(i + 1) % sides]
-			var c0: Vector3 = pts[k + 1][i]
-			var c1: Vector3 = pts[k + 1][(i + 1) % sides]
-			b.quad(c0, c1, a1, a0, Tile.CLOTH_RED)
-			# Изнанка — доски
-			b.quad(a0 - Vector3(0, 0.02, 0), a1 - Vector3(0, 0.02, 0), c1 - Vector3(0, 0.02, 0), c0 - Vector3(0, 0.02, 0), Tile.WOOD)
-	# Окантовка по краю
-	for i in sides:
-		var p0: Vector3 = pts[3][i]
-		var p1: Vector3 = pts[3][(i + 1) % sides]
-		var d := p1 - p0
-		b.box((p0 + p1) * 0.5 + Vector3(0, -0.005, 0), Vector3(0.025, 0.035, d.length() + 0.02), Tile.METAL,
-			Basis.looking_at(d.normalized(), Vector3.UP))
-	# Ребро-спина и железный умбон
-	b.box(Vector3(0, 0.05, 0), Vector3(0.04, 0.02, 1.0), Tile.WOOD_DARK)
-	b.lathe([Vector2(0.11, 0.0), Vector2(0.1, 0.035), Vector2(0.06, 0.07), Vector2(0, 0.08)], 8, Tile.IRON, Vector3(0, 0.045, 0))
-
-
-## Щит лежит под углом: одним краем на земле, другим на камне.
+## Щит лежит лицом вверх, чуть перекошен (модель prop_shield: 1,10 × 0,48, длинная ось — X, лицо — +Y).
 static func _make_shield() -> Mesh:
-	var b := PB.new()
-	b.box(Vector3(0.28, 0.07, 0.1), Vector3(0.18, 0.14, 0.16), Tile.STONE, Basis(Vector3.UP, 0.4))
-	b.xf = Transform3D(Basis(Vector3.BACK, 0.3) * Basis(Vector3.UP, 0.15), Vector3(0.0, 0.1, 0.0))
-	_shield_body(b, 101)
-	return b.commit()
+	return _model("prop_shield", Transform3D(Basis(Vector3.RIGHT, 0.04), Vector3(0.0, 0.01, 0.0)))
 
 
-## Щит прислонён к стене (точка у стены, лицо щита — в −Z), низ на земле.
+## Щит прислонён к стене (точка у стены, лицо щита — в −Z), низ на земле: длинная ось модели — вверх, к стене.
 static func _make_shield_leaning() -> Mesh:
-	var b := PB.new()
 	var front := Vector3(0, 0.26, -1).normalized()
-	var x := Vector3.RIGHT
-	b.xf = Transform3D(Basis(x, front, x.cross(front)), Vector3(0, 0.55, -0.2))
-	_shield_body(b, 103)
-	return b.commit()
+	var up := Vector3(0.0, -front.z, front.y)
+	return _model("prop_shield", Transform3D(Basis(up, front, up.cross(front)), Vector3(0, 0.55 * up.y + 0.01, -0.2)))
 
 
-## Сломанное копьё: древко переломлено, наконечник с обломком лежит отдельно.
+## Сломанное копьё: древко переломлено (модель, разрезанная по X на 0,2 м), обломок с наконечником лежит отдельно.
 static func _make_spear_broken() -> Mesh:
-	var b := PB.new()
-	b.box(Vector3(0, 0.025, 0.3), Vector3(0.04, 0.04, 1.2), Tile.WOOD, Basis(Vector3.UP, 0.1))
-	b.box(Vector3(0.05, 0.03, -0.32), Vector3(0.02, 0.02, 0.12), Tile.WOOD, Basis(Vector3.UP, 0.5))
-	var head := Basis(Vector3.UP, -0.7)
-	b.box(Vector3(0.4, 0.025, -0.55), Vector3(0.04, 0.04, 0.45), Tile.WOOD, head)
-	b.box(Vector3(0.4, 0.02, -0.55) + head * Vector3(0, 0, -0.32), Vector3(0.06, 0.015, 0.25), Tile.IRON, head)
-	return b.commit()
+	var lie := Basis(Vector3.UP, PI * 0.5)
+	return _model_parts("prop_spear", [
+		[Transform3D(Basis(Vector3.UP, 0.1) * lie, Vector3(0.0, 0.002, -0.1)), Vector2(-INF, 0.15)],
+		[Transform3D(Basis(Vector3.UP, -0.7) * lie, Vector3(0.05, 0.002, -0.12)), Vector2(0.2, INF)],
+	])
 
 
 ## Жаровня опрокинута: тренога на боку, чаша лежит рядом, угли и зола рассыпаны веером (тлеющие — огоньки из KINDS).

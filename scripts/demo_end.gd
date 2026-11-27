@@ -5,9 +5,9 @@ extends Node
 ##     лязгает в скобе (bolt_clank), камера вздрагивает — заперто;
 ##  2. пауза PAUSE_TIME с, камера по-прежнему не своя: голова медленно поворачивается к скале (TURN_TIME); фон тьмы
 ##     приглушается на AMBIENCE_DUCK дБ, а из-за скалы ясно слышно (без окклюзии, громче фона): обряд (ritual_far),
-##     напевы святых, удары молотка по одному (hammer_far, паузы HAMMER_PAUSE), крик (scream_pain), стоны (groan_pain);
-##     над краем скалы — отсвет огня (glow), на последних CROSS_TIME с на его фоне медленно поднимается тёмный силуэт
-##     креста, без деталей;
+##     напевы святых, треск огня (fire_crackle_far), удары молотка по одному (hammer_far, паузы HAMMER_PAUSE), крик
+##     (scream_pain), стоны (groan_pain); над краем скалы — отсвет огня (glow), на последних CROSS_TIME с на его фоне
+##     медленно поднимается тёмный силуэт креста, без деталей, балка скрипит под нагрузкой (wood_strain);
 ##  3. чернота и тишина (Master без звука, игра на паузе);
 ##  4. название, «Конец демо», через паузу — «Начать заново (ПКМ)»: GameState.reset_run() и уровень заново.
 ## Узел работает и на паузе (PROCESS_MODE_ALWAYS), таймеры — тоже.
@@ -19,6 +19,8 @@ const HAMMER_PAUSE := Vector2(1.5, 2.6)
 const PAUSE_TIME := 7.0
 const TURN_TIME := 4.0
 const CROSS_TIME := 2.0
+## Сколько раз скрипит балка, пока поднимается крест (wood_strain).
+const WOOD_STRAINS := 2
 ## Удар, после которого крик.
 const SCREAM_AFTER := 2
 ## Насколько тише фон тьмы на время паузы, дБ; добавка к звукам из-за скалы, дБ (к реестру).
@@ -86,7 +88,8 @@ func run(level: Node3D, player: Player, gate: Vector3, behind: Vector3, saints: 
 	await _turn_to(_gate + Vector3.UP * 1.3, 0.7)
 	for i in GATE_TUGS:
 		AudioManager.play_3d("gate_rattle", _gate + Vector3.UP * 1.2)
-		_delay(0.12, func() -> void: AudioManager.play_3d("bolt_clank", _gate + Vector3.UP * 1.1))
+		# Засов бьёт в скобу вслед за рывком: створка подалась — и встала
+		_delay(0.22, func() -> void: AudioManager.play_3d("bolt_clank", _gate + Vector3.UP * 1.1))
 		await _jolt(0.8)
 		await _wait(0.3 + 0.25 * i)
 	await _wait(0.5)
@@ -94,6 +97,8 @@ func run(level: Node3D, player: Player, gate: Vector3, behind: Vector3, saints: 
 	AudioManager.duck_ambience(AMBIENCE_DUCK, 1.5)
 	var rock := {"db": ROCK_DB, "occlude": false}
 	_emitters.append(AudioManager.add_emitter("ritual_far", _level, _behind, rock))
+	# Огонь за скалой: треск (отсвет над краем — тот же огонь)
+	_emitters.append(AudioManager.add_emitter("fire_crackle_far", _level, _behind + Vector3(-3.0, 0.5, -2.0), rock))
 	_emitters.append(AudioManager.add_emitter("saint_chant_01", _level, _behind + Vector3(2.5, 0.0, -3.0), {"db": ROCK_DB + 6.0, "occlude": false}))
 	_emitters.append(AudioManager.add_emitter("saint_chant_02", _level, _behind + Vector3(-2.0, 0.5, 2.5), {"db": ROCK_DB + 6.0, "occlude": false}))
 	_emitters.append(AudioManager.add_emitter("saint_chant_01", _level, _behind + Vector3(5.0, 0.0, 1.5), {"db": ROCK_DB + 3.0, "occlude": false}))
@@ -110,6 +115,10 @@ func run(level: Node3D, player: Player, gate: Vector3, behind: Vector3, saints: 
 	await _wait(PAUSE_TIME - CROSS_TIME)
 	# Последние секунды: над краем скалы медленно поднимается тёмный крест
 	_cross.visible = true
+	# Крест поднимают: балка скрипит под нагрузкой, два раза за подъём
+	for i in WOOD_STRAINS:
+		_after(CROSS_TIME * i / WOOD_STRAINS + 0.1, func() -> void:
+			AudioManager.play_3d("wood_strain", _behind + Vector3.UP * 2.0, {"db": ROCK_DB, "occlude": false}))
 	var ct := create_tween().set_trans(Tween.TRANS_SINE).set_ease(Tween.EASE_OUT)
 	ct.tween_property(_cross, "global_position", _cross_to, CROSS_TIME)
 	await _wait(CROSS_TIME)
