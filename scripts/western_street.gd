@@ -111,7 +111,10 @@ func _ready() -> void:
 	_build_antonia()
 	_build_bounds()
 	_build_lights()
+	# Запечённый свет (Свет 1): тёплые пятна у огоньков в нишах и жаровен
+	_b.warm_spots = _glows.light_spots()
 	_b.commit()
+	print("Запечённый свет: %d мс" % _b.bake_ms)
 	_glows.commit(_geometry)
 	_build_navigation()
 	_place_player()
@@ -159,6 +162,8 @@ func _build_aftermath(props: QuarterProps, split: Dictionary) -> void:
 	_aftermath.name = "Aftermath"
 	add_child(_aftermath)
 	_after_b = LevelBuilder.new(_aftermath)
+	# Мелочь «после тьмы» лежит на площади без своих стен — затенять её не по чему
+	_after_b.bake_light = false
 	props.set_builder(_after_b, _after_glows)
 	props.place_list(split.after_props, split.after_walls)
 	_after_b.local = true
@@ -239,6 +244,9 @@ func _build_dead_cellar() -> void:
 			_quarter.z0 + center.y + float(e[2])))
 		PropRegistry.add(kind, xf)
 		_b.add_instance(Corpses.mesh(kind), xf, Corpses.material(kind))
+		# Тени-пятна — только под нижним слоем груды (на полу)
+		if float(e[4]) < 0.15:
+			_b.blobs.add(xf, Corpses.mesh(kind).get_aabb(), 0.8)
 	_b.layer = 1
 
 
@@ -1209,6 +1217,8 @@ func _merlons(a: Vector3, b: Vector3, y: float) -> void:
 
 ## ─── Невидимые границы ───────────────────────────────────────────────────────
 func _build_bounds() -> void:
+	# Невидимые стены не заслоняют запечённый свет
+	_b.occlude = false
 	for e in D.BOUNDS:
 		var a := WorldCoords.point(e[0], e[1])
 		var b := WorldCoords.point(e[2], e[3])
@@ -1216,6 +1226,7 @@ func _build_bounds() -> void:
 		var center := (a + b) * 0.5
 		center.y = _ground_y(center.z) + 10.0
 		_b.collision_box(Transform3D(Basis(Vector3.UP, atan2(-d.z, d.x)), center), Vector3(d.length() + 1.0, 40.0, 1.0))
+	_b.occlude = true
 
 
 func _place_player() -> void:

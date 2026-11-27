@@ -220,6 +220,7 @@ func _ready() -> void:
 	character.build()
 	character.scale = Vector3.ONE * height_scale
 	character.mesh_instance.material_override = SaintLook.material(model, blood)
+	BlobShadow.attach(self, Vector2(0.6, 0.5) * height_scale)
 	set_anim_fps(anim_fps)
 	var skel := character.skeleton
 	_head = skel.find_bone("Head")

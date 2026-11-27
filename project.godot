@@ -195,6 +195,18 @@ psx_light_max={
 "type": "float",
 "value": 0.9
 }
+psx_ao_strength={
+"type": "float",
+"value": 1.0
+}
+psx_warm_strength={
+"type": "float",
+"value": 1.0
+}
+psx_blob_strength={
+"type": "float",
+"value": 1.0
+}
 
 [tma]
 

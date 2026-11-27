@@ -19,6 +19,17 @@ func add(pos: Vector3, radius: float, kind: Kind = Kind.NEAR, color: Color = FIR
 	(_quads[kind] as Array).append([pos, radius, Color(color.r, color.g, color.b, intensity)])
 
 
+## Тёплые пятна для запечённого света (VertexLight): [позиция, радиус, сила] — ниши и светильники (NEAR) —
+## на VertexLight.WARM_NEAR м, жаровни и маяк (FAR) — на WARM_FAR м. Сила — по яркости огонька.
+func light_spots() -> Array:
+	var out := []
+	for q: Array in _quads[Kind.NEAR]:
+		out.append([q[0], VertexLight.WARM_NEAR, clampf((q[2] as Color).a, 0.2, 1.0)])
+	for q: Array in _quads[Kind.FAR]:
+		out.append([q[0], VertexLight.WARM_FAR, clampf((q[2] as Color).a, 0.2, 1.0)])
+	return out
+
+
 ## Столб дыма над точкой pos: несколько клубов радиуса radius с разной фазой подъёма.
 func add_smoke(pos: Vector3, radius: float, clouds: int = 10) -> void:
 	for i in clouds:

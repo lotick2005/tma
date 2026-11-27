@@ -38,6 +38,21 @@ var _inflate_counter := 0
 ## Формы коллизии по мешу: одинаковые лавки делят одну форму.
 var _trimesh_cache := {}
 
+## ─── Запечённый свет в вершинах (VertexLight) и тени-пятна (BlobShadows) ───
+## false — следующие коллизии и коробки не заслоняют свет (невидимые границы уровня).
+var occlude := true
+## Запекать ли свет в вершины при commit().
+var bake_light := true
+## Тёплые пятна: [позиция, радиус, сила] (огоньки в нишах и жаровни — Glows.light_spots()).
+var warm_spots: Array = []
+## Сколько миллисекунд заняло запекание в последнем commit() (для отчёта / отладки).
+var bake_ms := 0
+## Заслонители: [Transform3D центра, размер] и треугольники в мировых координатах.
+var _occ_boxes: Array = []
+var _occ_faces := PackedVector3Array()
+## Тени-пятна под неподвижным (тела): один меш на строитель.
+var blobs := BlobShadows.new()
+
 
 func _init(parent: Node3D) -> void:
 	root = parent
@@ -87,6 +102,12 @@ func box(base: Vector3, size: Vector3, mat: Material, tile: float = 1.0, collide
 	add_mesh(PsxMesh.box(size + Vector3.ONE * e * 2.0, tile, c, skip_faces), xform, mat)
 	if collide:
 		collision_box(xform, size)
+	elif occlude:
+		# Видимая коробка без коллизии (парапет, перемычка) тоже заслоняет; жерди и брусья (два размера < 0,4 м) — нет
+		var dims := [size.x, size.y, size.z]
+		dims.sort()
+		if dims[1] >= 0.4:
+			_occ_boxes.append([xform, size])
 
 
 ## Ящик по двум углам (min, max).
@@ -130,6 +151,17 @@ func collision_box(xform: Transform3D, size: Vector3) -> void:
 
 
 func collision_shape(shape: Shape3D, xform: Transform3D) -> void:
+	if occlude:
+		if shape is BoxShape3D:
+			_occ_boxes.append([xform, (shape as BoxShape3D).size])
+		elif shape is CylinderShape3D:
+			var cyl := shape as CylinderShape3D
+			_occ_boxes.append([Transform3D(Basis(), xform.origin), Vector3(cyl.radius * 1.6, cyl.height, cyl.radius * 1.6)])
+		elif shape is ConcavePolygonShape3D:
+			var f := (shape as ConcavePolygonShape3D).get_faces()
+			for k in f.size():
+				f[k] = xform * f[k]
+			_occ_faces.append_array(f)
 	var cs := CollisionShape3D.new()
 	cs.shape = shape
 	cs.transform = xform
@@ -144,13 +176,24 @@ func _inflate() -> float:
 
 ## Создаёт MeshInstance3D из накопленных пакетов. Вызвать один раз в конце сборки.
 func commit() -> void:
+	var t0 := Time.get_ticks_msec()
+	var light := _make_vertex_light()
 	var i := 0
 	for key in _batches:
 		var st: SurfaceTool = _batches[key]
 		var info: Array = _batch_info[key]
 		var mi := MeshInstance3D.new()
 		mi.name = "Geo%d" % i
-		mi.mesh = st.commit()
+		if light and info[0] is ShaderMaterial and (info[0] as ShaderMaterial).shader == PsxMaterial.SHADER:
+			# Общие вершины сливаются (их в ~2,5 раза меньше: и запекать быстрее, и видеокарте легче)
+			st.index()
+			var arrays := st.commit_to_arrays()
+			arrays[Mesh.ARRAY_COLOR] = light.colors(arrays[Mesh.ARRAY_VERTEX], arrays[Mesh.ARRAY_NORMAL], info[3])
+			var am := ArrayMesh.new()
+			am.add_surface_from_arrays(Mesh.PRIMITIVE_TRIANGLES, arrays)
+			mi.mesh = am
+		else:
+			mi.mesh = st.commit()
 		mi.material_override = info[0]
 		mi.layers = 1 << (int(info[1]) - 1)
 		mi.position = info[3]
@@ -161,6 +204,10 @@ func commit() -> void:
 		i += 1
 	_batches.clear()
 	_batch_info.clear()
+	_occ_boxes.clear()
+	_occ_faces.clear()
+	bake_ms = Time.get_ticks_msec() - t0
+	blobs.commit(root)
 	for key in _instances:
 		var entry: Array = _instances[key]
 		var xforms: Array = entry[4]
@@ -182,6 +229,44 @@ func commit() -> void:
 		root.add_child(mmi)
 		i += 1
 	_instances.clear()
+
+
+## Сетка заслонителей для запекания, если есть что запекать (null — запекание выключено).
+func _make_vertex_light() -> VertexLight:
+	if not bake_light or _batches.is_empty():
+		return null
+	var bounds := AABB()
+	var first := true
+	for key in _batches:
+		var info: Array = _batch_info[key]
+		if not (info[0] is ShaderMaterial and (info[0] as ShaderMaterial).shader == PsxMaterial.SHADER):
+			continue
+		# Границы куска: по XZ — сам кусок, по высоте — заслонители решат; берём середину и размер куска
+		var size := LOCAL_CHUNK if info[2] else CHUNK
+		var c: Vector3 = info[3]
+		var ab := AABB(c - Vector3(size * 0.5, 0.0, size * 0.5), Vector3(size, 0.0, size))
+		bounds = ab if first else bounds.merge(ab)
+		first = false
+	if first:
+		return null
+	# По высоте — от низа до верха заслонителей и тёплых пятен
+	var y0 := INF
+	var y1 := -INF
+	for b: Array in _occ_boxes:
+		var xf: Transform3D = b[0]
+		var hy: float = (b[1] as Vector3).y * 0.5
+		y0 = minf(y0, xf.origin.y - hy)
+		y1 = maxf(y1, xf.origin.y + hy)
+	for p in _occ_faces:
+		y0 = minf(y0, p.y)
+		y1 = maxf(y1, p.y)
+	if y0 > y1:
+		return null
+	bounds.position.y = y0
+	bounds.size.y = y1 - y0
+	var vl := VertexLight.new()
+	vl.build(bounds, _occ_boxes, _occ_faces, warm_spots)
+	return vl if vl.ok else null
 
 
 ## Дальность местных кусков (днём видно далеко, во тьме — нет смысла рисовать дальше тумана).

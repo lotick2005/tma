@@ -51,6 +51,8 @@ func setup(kind_name: String) -> void:
 	mi.mesh = PropLibrary.mesh(info.mesh)
 	mi.material_override = PropLibrary.material_for(info.mesh)
 	add_child(mi)
+	var ab := mi.mesh.get_aabb()
+	BlobShadow.attach(self, Vector2(ab.size.x, ab.size.z), 0.8)
 	var cs := CollisionShape3D.new()
 	var size: Array = info.size
 	match info.shape:

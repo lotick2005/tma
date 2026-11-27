@@ -69,6 +69,13 @@ func _params() -> Array:
 			func(v: float) -> void: PsxMaterial.set_global("psx_snap_pixels", v)],
 		["affine", "Аффинность", 0.0, 1.0, 0.01, PsxMaterial.global_param("psx_affine"),
 			func(v: float) -> void: PsxMaterial.set_global("psx_affine", v)],
+		# Запечённый свет в вершинах (Свет 1): 0 — выкл, 1 — как запечено
+		["ao", "Затенение", 0.0, 2.0, 0.01, PsxMaterial.global_param("psx_ao_strength"),
+			func(v: float) -> void: PsxMaterial.set_global("psx_ao_strength", v)],
+		["warm", "Тёплые пятна", 0.0, 2.0, 0.01, PsxMaterial.global_param("psx_warm_strength"),
+			func(v: float) -> void: PsxMaterial.set_global("psx_warm_strength", v)],
+		["blob", "Тени-пятна", 0.0, 2.0, 0.01, PsxMaterial.global_param("psx_blob_strength"),
+			func(v: float) -> void: PsxMaterial.set_global("psx_blob_strength", v)],
 	]
 	if _sun and _sun.visible:
 		params.append(["sun", "Солнце", 0.0, 3.0, 0.01, _sun.light_energy,
@@ -163,6 +170,12 @@ func _build() -> void:
 	labels_btn.button_pressed = _labels_on
 	labels_btn.toggled.connect(func(on: bool) -> void: _labels_on = on)
 	pic.add_child(labels_btn)
+	# Эксперимент (Свет 1): кубическая тень от светильника героя; решение — после замера FPS в браузере
+	var lamp_sh_btn := CheckButton.new()
+	lamp_sh_btn.text = "Тени светильника (эксперимент)"
+	lamp_sh_btn.button_pressed = _lamp.shadows
+	lamp_sh_btn.toggled.connect(func(on: bool) -> void: _lamp.set_shadows(on))
+	pic.add_child(lamp_sh_btn)
 
 	# ─── Звук ───
 	var sgrid := _make_grid(snd)
