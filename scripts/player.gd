@@ -108,6 +108,7 @@ func _ready() -> void:
 	_arms.lamp_changed.connect(func(out: bool) -> void: GameState.lamp_out = out)
 	_body.foot_down.connect(func() -> void: footstep.emit(move_mode))
 	_debug_keys = ProjectSettings.get_setting("tma/debug/keys", false)
+	BlobShadow.attach(self, Vector2(0.55, 0.45))
 
 
 func _unhandled_input(event: InputEvent) -> void:

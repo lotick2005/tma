@@ -21,6 +21,7 @@ var nozzle_tip: Vector3 = MODEL_XF * TIP_IN_FILE
 @export var light_range := 3.5
 ## Тени от светильника выключены, как на PS1: свет идёт почти из глаз героя, тени от него
 ## видны только рваными полосами по полу, а в браузере каждая кубическая тень — 6 лишних проходов.
+## Свет 1: эксперимент — переключатель «Тени светильника» в панели (0), set_shadows(); решение — после замера в браузере.
 @export var shadows := false
 ## Сила мерцания: доля яркости, на которую пламя «проседает».
 @export_range(0.0, 1.0) var flicker_amount := 0.25
@@ -56,11 +57,21 @@ func _ready() -> void:
 	_noise.seed = randi()
 	_light.light_color = light_color
 	_light.omni_range = light_range
-	_light.shadow_enabled = shadows
+	set_shadows(shadows)
 	# Тело и руки героя не загораживают собственный светильник, а руки и он сам им не освещаются
 	var view_bit := 1 << (Player.VIEW_LAYER - 1)
 	_light.shadow_caster_mask = 0xFFFFFFFF & ~(1 << (Player.BODY_LAYER - 1)) & ~(1 << (Player.HEAD_LAYER - 1)) & ~view_bit
 	_light.light_cull_mask = 0xFFFFFFFF & ~view_bit
+
+
+## Тень от светильника: кубическая (CubeMap — dual paraboloid в Compatibility не работает), радиус — как у света.
+## Тело, голова и руки героя в неё не попадают (shadow_caster_mask ниже), иначе рука закрывает свет.
+func set_shadows(on: bool) -> void:
+	shadows = on
+	_light.shadow_enabled = on
+	_light.omni_shadow_mode = OmniLight3D.SHADOW_CUBE
+	_light.shadow_bias = 0.08
+	_light.shadow_normal_bias = 1.5
 
 
 func _process(delta: float) -> void:

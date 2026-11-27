@@ -5,6 +5,9 @@
 //   psx_affine_near — ближе этого расстояния (м) аффинность плавно гаснет, чтобы вплотную у стены не было каши;
 //   psx_fog_color, psx_fog_start, psx_fog_end — цвет тумана и где он начинается и где закрывает всё (м);
 //   psx_light_max   — сколько максимум даёт один источник света: вплотную к огню нет белого пятна;
+//   psx_ao_strength, psx_warm_strength — сила запечённого света в вершинах (0 — выкл, 1 — как запечено).
+// Запечённый свет (scripts/vertex_light.gd): COLOR.rgb — затенение (множитель albedo), COLOR.a — 1 − тепло
+// (тёплое пятно у огня, добавляется как свет). У моделей без цвета вершин COLOR белый — ничего не меняется.
 // near_discard (у материала) — своё тело героя не рисуется ближе этого к камере.
 shader_type spatial;
 render_mode specular_disabled;
@@ -16,6 +19,12 @@ global uniform vec4 psx_fog_color;
 global uniform float psx_fog_start;
 global uniform float psx_fog_end;
 global uniform float psx_light_max;
+global uniform float psx_ao_strength;
+global uniform float psx_warm_strength;
+
+// Цвет и сила тёплых пятен (огонь — как Glows.FIRE).
+const vec3 WARM_COLOR = vec3(1.0, 0.58, 0.22);
+const float WARM_GAIN = 0.85;
 
 uniform sampler2D albedo_texture : source_color, filter_nearest, repeat_enable, hint_default_white;
 uniform vec4 albedo_color : source_color = vec4(1.0);
@@ -64,9 +73,13 @@ void fragment() {
 	}
 	// Итог = свет × albedo + emission, поэтому так получается mix(освещённый цвет, туман, fog_k)
 	vec3 albedo = tex.rgb * albedo_color.rgb;
-	ALBEDO = albedo * (1.0 - fog_k);
+	// Запечённый свет в вершинах: затенение умножает albedo (и свет светильника тоже), тепло — добавочный свет
+	vec3 baked = clamp(mix(vec3(1.0), COLOR.rgb, psx_ao_strength), 0.0, 1.0);
+	float warm = (1.0 - COLOR.a) * psx_warm_strength;
+	ALBEDO = albedo * baked * (1.0 - fog_k);
 	float shade = mix(1.0, 0.3 + 0.7 * clamp(NORMAL.y * 0.5 + 0.5, 0.0, 1.0), self_illum_shade);
-	EMISSION = mix(albedo * self_illum * shade * self_illum_color, psx_fog_color.rgb, fog_k);
+	vec3 glow = albedo * self_illum * shade * self_illum_color + albedo * baked * warm * WARM_COLOR * WARM_GAIN;
+	EMISSION = mix(glow, psx_fog_color.rgb, fog_k);
 }
 
 // Ламберт, но вклад одного источника ограничен psx_light_max. Ограничиваем всю тройку RGB

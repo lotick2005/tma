@@ -116,6 +116,7 @@ func place(kind: String, pos: Vector3, yaw: float, indoor: bool = false, scale: 
 		PropRegistry.add(kind, cxf)
 		_b.layer = LevelBuilder.INTERIOR_LAYER if indoor else 1
 		_b.add_mesh(Corpses.mesh(kind), cxf, Corpses.material(kind))
+		_b.blobs.add(cxf, Corpses.mesh(kind).get_aabb())
 		_b.layer = 1
 		return
 	var inf := PropLibrary.info(kind)
@@ -135,7 +136,10 @@ func place(kind: String, pos: Vector3, yaw: float, indoor: bool = false, scale: 
 	if size != Vector3.ZERO:
 		var at: Vector3 = inf.get("collide_at", Vector3.ZERO)
 		var rot := Basis(Vector3.UP, yaw)
+		# Коробка коллизии предмета не заслоняет запечённый свет: иначе предмет внутри неё весь чёрный
+		_b.occlude = false
 		_b.collision_box(Transform3D(rot, pos + xf.basis * at + Vector3.UP * size.y * scale * 0.5), size * scale)
+		_b.occlude = true
 	for g: Array in inf.get("glow", []):
 		var far: bool = g.size() > 3 and g[3]
 		_glows.add(xf * (g[0] as Vector3), g[1] * scale, Glows.Kind.FAR if far else Glows.Kind.NEAR, Glows.FIRE, g[2])
