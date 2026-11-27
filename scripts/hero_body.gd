@@ -554,7 +554,9 @@ func _run_camera(delta: float) -> Vector3:
 	var nod_k := _nod / deg_to_rad(maxf(run_stop_nod, 0.01))
 	off.y -= run_stop_dip * nod_k
 	if not Cutscenes.playing:
-		_player.eye_camera().rotation = Vector3(-_nod, 0.0, _turn_roll - sway * deg_to_rad(run_bob_roll))
+		# Плюс наклон выглядывания (Q / E, Player.lean)
+		_player.eye_camera().rotation = Vector3(-_nod, 0.0, _turn_roll - sway * deg_to_rad(run_bob_roll)
+			- _player.lean * deg_to_rad(_player.lean_roll))
 	return off
 
 

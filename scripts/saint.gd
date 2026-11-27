@@ -53,6 +53,13 @@ signal state_changed(saint: Saint, state: State)
 @export var repeat_window := 5.0
 ## Шум совсем рядом (ближе этого, м) — сразу погоня.
 @export var chase_instant := 2.5
+## Стоит на посту и не сходит с места на стук предметов (святой у молельни, полировка демо 5): упал или разбился
+## предмет — резко поворачивает голову на звук и замолкает на startle_min…startle_max с, потом снова поёт.
+## Шаги слышит как обычно (hearing). Слух на стук — object_hearing (множитель радиуса шума предмета).
+@export var hold_ground := false
+@export var object_hearing := 1.0
+@export var startle_min := 2.0
+@export var startle_max := 3.0
 
 @export_group("Зрение")
 ## Силуэт вплотную спереди, м, и угол от лица, градусы.
@@ -180,6 +187,10 @@ var _scene_look_w := 0.0
 var _head_fwd_l := Vector3.BACK
 var _bones := {}
 var _scene_anim := ""
+## Вздрогнул на стук (hold_ground): сколько ещё молчит и смотрит, куда повернул голову (мир), доля поворота 0…1.
+var _startle := 0.0
+var _startle_at := Vector3.ZERO
+var _startle_w := 0.0
 
 
 ## Модификатор скелета: удар камнем правой рукой поверх анимации kneel_inspect (готовой анимации нет).
@@ -212,7 +223,7 @@ func _ready() -> void:
 	set_anim_fps(anim_fps)
 	var skel := character.skeleton
 	_head = skel.find_bone("Head")
-	for b in ["RightUpperArm", "RightLowerArm", "RightHand", "RightIndexProximal", "Spine", "Neck", "UpperChest"]:
+	for b in ["RightShoulder", "RightUpperArm", "RightLowerArm", "RightHand", "RightIndexProximal", "Spine", "Neck", "UpperChest"]:
 		_bones[b] = skel.find_bone(b)
 	# Лицо модели — +Z скелета
 	_head_fwd_l = (skel.get_bone_global_rest(_head).basis.inverse() * Vector3.BACK).normalized()
@@ -298,6 +309,8 @@ func reset() -> void:
 	_scene_look_on = false
 	_scene_look_w = 0.0
 	_scene_anim = ""
+	_startle = 0.0
+	_startle_w = 0.0
 	if not is_inside_tree():
 		state = start_state
 		return
@@ -335,6 +348,10 @@ func state_name() -> String:
 func _on_noise(pos: Vector3, radius: float, source: String, maker: Object) -> void:
 	if maker == self or state == State.CATCH or state == State.SCENE or not is_inside_tree():
 		return
+	if hold_ground and source != "step" and state == State.PRAY:
+		if _hears(pos, radius * object_hearing):
+			_startle_on(pos)
+		return
 	if not _hears(pos, radius * hearing):
 		return
 	if source == "step":
@@ -353,6 +370,28 @@ func _hears(pos: Vector3, radius: float) -> bool:
 		return true
 	var q := PhysicsRayQueryParameters3D.create(pos + Vector3.UP * 1.0, ear, NoiseSystem.WALL_MASK)
 	return get_world_3d().direct_space_state.intersect_ray(q).is_empty()
+
+
+## Стук предмета, а он на посту: голова — рывком к звуку, напев обрывается; с места не сходит.
+func _startle_on(pos: Vector3) -> void:
+	if _startle <= 0.0:
+		_voice("silent")
+		AudioManager.play_3d("cloth_rustle", global_position + Vector3.UP * 1.0, {"db": 2.0})
+	_startle = randf_range(startle_min, startle_max)
+	_startle_at = pos + Vector3.UP * 0.3
+
+
+func _update_startle(delta: float) -> void:
+	if _startle <= 0.0:
+		_startle_w = move_toward(_startle_w, 0.0, delta / 0.6)
+		return
+	# Рывок — за 0,1 с (жуть в резкости), назад — медленно
+	_startle_w = move_toward(_startle_w, 1.0, delta / 0.1)
+	_startle -= delta
+	if _startle <= 0.0 or state != State.PRAY:
+		_startle = 0.0
+		if state == State.PRAY:
+			_voice("normal")
 
 
 ## Услышал шум в точке pos.
@@ -566,6 +605,7 @@ func _physics_process(delta: float) -> void:
 			velocity.x = 0.0
 			velocity.z = 0.0
 	_move(want, speed, delta, direct)
+	_update_startle(delta)
 	_update_twitch(delta)
 	_update_anim(speed)
 	_update_sounds(delta)
@@ -900,6 +940,10 @@ func play_hold() -> void:
 
 ## Удар камнем — замах и падение руки, с: поднимает STRIKE_RAISE, держит наверху STRIKE_TOP, бьёт за STRIKE_FALL,
 ## рука лежит на теле до конца STRIKE_PERIOD (один удар в ~1,5 с). На каждый удар — hit_wet.
+## Полировка демо 5: поза — kneel_fix (Quaternius «Fixing_Kneeling»: на коленях, руки у земли), отрезок, где он
+## стоит на коленях (STRIKE_BASE_FROM…TO, туда-обратно); замах правой — кости руки из sword_attack (удар сверху):
+## от начала до верха замаха SWING_TOP, падение — до SWING_HIT. Камень падает на голову лежащего (strike_target):
+## на падении рука доводится IK до головы, корпус подаётся вперёд и вниз (STRIKE_REACH_LEAN).
 const STRIKE_PERIOD := 1.5
 const STRIKE_RAISE := 0.6
 const STRIKE_TOP := 0.2
@@ -911,12 +955,38 @@ const STRIKE_HAND_DOWN := Vector3(-0.05, -0.42, -0.5)
 ## Корпус откидывается назад на замахе и подаётся вперёд на ударе, град.
 const STRIKE_LEAN_BACK := 12.0
 const STRIKE_LEAN_HIT := 9.0
+const STRIKE_BASE := "kneel_fix"
+const STRIKE_BASE_FROM := 1.1
+const STRIKE_BASE_TO := 3.7
+const STRIKE_SWING := "sword_attack"
+const SWING_TOP := 0.26
+const SWING_HIT := 0.47
+const SWING_BONES := ["RightShoulder", "RightUpperArm", "RightLowerArm", "RightHand"]
+## Наклон корпуса вперёд, когда камень у головы лежащего, град.
+const STRIKE_REACH_LEAN := 22.0
+## Куда падает камень (голова жертвы, мир); ZERO — рука идёт по старой дуге (STRIKE_HAND_*).
+var strike_target := Vector3.ZERO
+## Фаза удара: 0 — замах, 1 — наверху, 2 — падает, 3 — лежит на голове; доля фазы 0…1.
+var _strike_phase := 3
+var _strike_k := 1.0
+var _swing_tracks := {}
+var _base_dir := 1.0
+## Последнее смещение камня от кисти (мир) — чтобы к голове шёл камень, а не запястье.
+var _stone_off := Vector3.ZERO
 
 ## Стоит на коленях над телом и бьёт его камнем, снова и снова: два-четыре удара, пауза, ещё.
 func start_strikes() -> void:
 	_enter(State.SCENE)
-	_scene_anim = "kneel_inspect"
-	character.play("kneel_inspect", 0.0)
+	_scene_anim = STRIKE_BASE
+	character.play(STRIKE_BASE, 0.0)
+	character.anim.seek(STRIKE_BASE_FROM, true)
+	_base_dir = 1.0
+	if _swing_tracks.is_empty():
+		var sw := Anims.library().get_animation(STRIKE_SWING)
+		for b: String in SWING_BONES:
+			var ti := sw.find_track(NodePath("%GeneralSkeleton:" + b), Animation.TYPE_ROTATION_3D)
+			if ti >= 0:
+				_swing_tracks[b] = ti
 	# Здесь поза всегда плавная (и при малом anim_fps из панели): рука с камнем идёт каждый кадр
 	character.set_update_interval(0.0)
 	_strike = true
@@ -979,6 +1049,14 @@ func _process(delta: float) -> void:
 	_strike_w = move_toward(_strike_w, 1.0 if _strike else 0.0, delta / 0.6)
 	_scene_look_w = move_toward(_scene_look_w, 1.0 if _scene_look_on else 0.0, delta / 0.7)
 	_strike_jolt = maxf(0.0, _strike_jolt - delta / 0.35)
+	# Поза на коленях — отрезок kneel_fix туда-обратно (без скачка на стыке)
+	if character.current == STRIKE_BASE and character.anim.is_playing():
+		var pos := character.anim.current_animation_position
+		if pos >= STRIKE_BASE_TO:
+			_base_dir = -1.0
+		elif pos <= STRIKE_BASE_FROM:
+			_base_dir = 1.0
+		character.anim.speed_scale = _base_dir
 	if not _strike:
 		# Замер: рука плавно опускается из того места, где была
 		_strike_angle = move_toward(_strike_angle, 0.0, delta / 0.5)
@@ -997,14 +1075,22 @@ func _process(delta: float) -> void:
 	var was := _strike_angle
 	if t < STRIKE_RAISE:
 		_strike_angle = smoothstep(0.0, 1.0, t / STRIKE_RAISE)
+		_strike_phase = 0
+		_strike_k = t / STRIKE_RAISE
 	elif t < STRIKE_RAISE + STRIKE_TOP:
 		_strike_angle = 1.0
+		_strike_phase = 1
+		_strike_k = (t - STRIKE_RAISE) / STRIKE_TOP
 	elif t < hit_at:
 		# Падает с разгоном
 		var k := (t - STRIKE_RAISE - STRIKE_TOP) / STRIKE_FALL
 		_strike_angle = 1.0 - k * k
+		_strike_phase = 2
+		_strike_k = k * k
 	else:
 		_strike_angle = 0.0
+		_strike_phase = 3
+		_strike_k = 1.0
 	if was > 0.0 and _strike_angle <= 0.0:
 		_strike_jolt = 1.0
 		AudioManager.play_3d("hit_wet", stone_point(), {"db": 2.0})
@@ -1022,12 +1108,17 @@ func _apply_pose() -> void:
 
 ## Корпус и правая рука с камнем — замах и удар (IK от плеча), голова — к точке катсцены, камень — в кисть.
 func _apply_strike() -> void:
-	if _stone == null or not _stone.visible:
+	var has_stone := _stone != null and _stone.visible
+	if not has_stone and _scene_look_w <= 0.001 and _startle_w <= 0.001:
 		return
 	var skel := character.skeleton
 	var to_skel := skel.global_transform.affine_inverse()
 	var axes := (to_skel.basis * global_basis).orthonormalized()
-	if _strike_w > 0.001:
+	if not has_stone:
+		pass
+	elif _strike_w > 0.001 and strike_target != Vector3.ZERO:
+		_apply_swing(skel, to_skel, axes)
+	elif _strike_w > 0.001:
 		# Корпус: назад на замахе, вперёд на ударе
 		var lean := deg_to_rad(STRIKE_LEAN_BACK) * _strike_angle - deg_to_rad(STRIKE_LEAN_HIT) * _strike_jolt * _strike_jolt
 		_rotate_bone(_bones.Spine, Basis(axes.x, lean * _strike_w))
@@ -1038,21 +1129,63 @@ func _apply_strike() -> void:
 		var dir := down.normalized().slerp(top.normalized(), _strike_angle)
 		var hand := shoulder + dir * lerpf(down.length(), top.length(), _strike_angle)
 		_solve_right_arm(hand, axes * Vector3(0.9, -0.2, 0.5), _strike_w)
-	if _scene_look_w > 0.001:
-		var want := (to_skel * _scene_look - skel.get_bone_global_pose(_head).origin).normalized()
+	var look_w := maxf(_scene_look_w, _startle_w)
+	if look_w > 0.001:
+		var look_at := _scene_look if _scene_look_w >= _startle_w else _startle_at
+		var want := (to_skel * look_at - skel.get_bone_global_pose(_head).origin).normalized()
 		for i in 2:
 			var hb := skel.get_bone_global_pose(_head).basis.orthonormalized()
 			var q := Quaternion(hb * _head_fwd_l, want)
 			var ang := q.get_angle()
 			if ang < 0.001:
 				break
-			var share := (0.4 if i == 0 else 1.0) * _scene_look_w
+			var share := (0.4 if i == 0 else 1.0) * look_w
 			var lim := deg_to_rad(40.0 if i == 0 else 80.0)
 			_rotate_bone(_bones.Neck if i == 0 else _head, Basis(Quaternion().slerp(q, minf(share, lim / ang))))
+	if not has_stone:
+		return
 	var h := skel.get_bone_global_pose(_bones.RightHand)
 	var f := skel.get_bone_global_pose(_bones.RightIndexProximal)
 	var at := skel.global_transform * h.origin.lerp(f.origin, 0.8)
 	_stone.global_transform = Transform3D(skel.global_basis.orthonormalized() * h.basis.orthonormalized(), at)
+
+
+## Удар по голове лежащего: правая рука — из sword_attack (замах), на падении IK доводит камень до strike_target.
+## Замер (stop_strikes): _strike_angle плавно уходит в 0 — рука остаётся на голове, IK гаснет вместе с _strike_w.
+func _apply_swing(skel: Skeleton3D, to_skel: Transform3D, axes: Basis) -> void:
+	var sw := Anims.library().get_animation(STRIKE_SWING)
+	# Время в анимации меча и доля IK (0 — рука из анимации, 1 — камень на голове)
+	var ts := SWING_HIT
+	var ik := 1.0
+	match _strike_phase:
+		0:
+			ts = lerpf(0.0, SWING_TOP, smoothstep(0.0, 1.0, _strike_k))
+			ik = 1.0 - smoothstep(0.0, 0.45, _strike_k)
+		1:
+			ts = SWING_TOP
+			ik = 0.0
+		2:
+			ts = lerpf(SWING_TOP, SWING_HIT, _strike_k)
+			ik = _strike_k
+	if not _strike:
+		ik = 1.0
+	for b: String in _swing_tracks:
+		var bone: int = _bones.get(b, -1)
+		if bone < 0:
+			continue
+		var cur := skel.get_bone_pose_rotation(bone)
+		var want := sw.rotation_track_interpolate(_swing_tracks[b], ts)
+		skel.set_bone_pose_rotation(bone, cur.slerp(want, _strike_w * (1.0 - ik * 0.6)))
+	# Корпус: назад на замахе, вперёд и вниз к голове на ударе
+	var lean := deg_to_rad(STRIKE_LEAN_BACK) * (1.0 - ik) * _strike_angle - deg_to_rad(STRIKE_REACH_LEAN) * ik \
+		- deg_to_rad(STRIKE_LEAN_HIT) * _strike_jolt * _strike_jolt
+	_rotate_bone(_bones.Spine, Basis(axes.x, lean * _strike_w))
+	if ik > 0.001:
+		var hand := to_skel * (strike_target - _stone_off)
+		_solve_right_arm(hand, axes * Vector3(0.9, 0.2, 0.3), ik * _strike_w)
+	var h := skel.get_bone_global_pose(_bones.RightHand)
+	var f := skel.get_bone_global_pose(_bones.RightIndexProximal)
+	_stone_off = skel.global_transform.basis * (h.origin.lerp(f.origin, 0.8) - h.origin)
 
 
 ## Повернуть кость в пространстве скелета (вокруг её начала), дети едут вместе с ней.

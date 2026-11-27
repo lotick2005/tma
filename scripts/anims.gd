@@ -3,7 +3,7 @@ extends RefCounted
 ## Общая библиотека мокап-анимаций Mixamo (res://animations/*.glb, CLAUDE.md §2 «Анимации людей»).
 ## Каждый файл импортируется как AnimationLibrary с ретаргетом через models/mixamo_bone_map.tres —
 ## дорожки вида "%GeneralSkeleton:Hips", поэтому любая анимация подходит любой модели из res://models/.
-## Здесь все 70 собраны в одну библиотеку (имя анимации = имя файла), плюс скорость записи для speed_scale.
+## Здесь все собраны в одну библиотеку (имя анимации = имя файла), плюс скорость записи для speed_scale.
 ## Таблица — animations/README.md.
 
 const DIR := "res://animations/"
@@ -35,6 +35,9 @@ const LIST := {
 	"hold_down": ["once", 0.0], "kneel_idle": ["loop", 0.0], "kneel_inspect": ["loop", 0.0],
 	"reach_pose": ["pose", 0.0], "cover_peek": ["loop", 0.0], "throw": ["once", 0.0], "throw_big": ["once", 0.0],
 	"throw_left": ["once", 0.0], "throw_big_left": ["once", 0.0],
+	# Quaternius UAL1 (CC0, свой скелет — models/quaternius_bone_map.tres): на коленях, руки работают у земли;
+	# удар сверху (меч) — замах правой для удара камнем
+	"kneel_fix": ["loop", 0.0], "sword_attack": ["once", 0.0],
 }
 
 ## Дорожка кости Root — для AnimationMixer.root_motion_track.

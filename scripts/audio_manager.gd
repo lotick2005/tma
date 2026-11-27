@@ -69,6 +69,10 @@ var _unmuffle_token := {}
 ## Заглушка фона: 1 — звучит, 0 — тишина (плавно).
 var _ambience_on := 1.0
 var _ambience_on_target := 1.0
+## Приглушение фона, дБ (конец демо: звуки из-за скалы поверх фона) и куда оно идёт, дБ/с.
+var _ambience_duck := 0.0
+var _ambience_duck_target := 0.0
+var _ambience_duck_rate := 10.0
 var _alarm_timer := 0.0
 var _debug_keys := false
 
@@ -425,6 +429,12 @@ func unmuffle_bus(bus: String, delay: float, ramp: float) -> void:
 		set_bus_muffled(bus, false)
 
 
+## Приглушить фон на db дБ за time с (0 — вернуть).
+func duck_ambience(db: float, time: float) -> void:
+	_ambience_duck_target = db
+	_ambience_duck_rate = absf(db - _ambience_duck) / maxf(time, 0.01)
+
+
 func set_bus_volume(bus: String, db: float) -> void:
 	_user_db[bus] = db
 	if bus != "Ambience":
@@ -440,12 +450,13 @@ func get_bus_volume(bus: String) -> float:
 ## Шина фона = громкость игрока × «заглушить фон» × уход в тишину по угрозе.
 func _update_buses(delta: float) -> void:
 	_ambience_on = move_toward(_ambience_on, _ambience_on_target, delta / MUTE_FADE)
+	_ambience_duck = move_toward(_ambience_duck, _ambience_duck_target, _ambience_duck_rate * delta)
 	var threat: float = ThreatDirector.threat
 	var duck := 1.0 - smoothstep(THREAT_DUCK_FROM, THREAT_DUCK_TO, threat)
 	var k := _ambience_on * duck
 	var i := AudioServer.get_bus_index("Ambience")
 	if i >= 0:
-		AudioServer.set_bus_volume_db(i, _user_db.get("Ambience", 0.0) + linear_to_db(maxf(k, 1e-4)))
+		AudioServer.set_bus_volume_db(i, _user_db.get("Ambience", 0.0) + linear_to_db(maxf(k, 1e-4)) + _ambience_duck)
 
 
 # ─── Поверхность и ложные тревоги ────────────────────────────────────────────

@@ -262,6 +262,8 @@ const SOUNDS := {
 	## по одному (07–09 — уличные, далёкие), крик и стон, обряд (пение и стук, петля 30 с) + напевы святых.
 	## Цель у слушателя за скалой: молоток ≈ −36, крик ≈ −32, обряд ≈ −40 дБFS — тише фона, но различимо.
 	"gate_rattle": {"file": _GATE_RATTLE, "bus": "SFX", "db": -6.0, "unit": 3.0, "range": 30.0, "pitch": 0.04},
+	## Полировка демо 5: засов бьёт в скобу на каждом рывке — слышно, что заперто (заглушка, synth "bolt_clank").
+	"bolt_clank": {"synth": "bolt_clank", "bus": "SFX", "db": -3.0, "variants": 3, "unit": 3.0, "range": 30.0, "pitch": 0.03},
 	"hammer_far": {"file": _HAMMER_FAR, "bus": "SFX", "db": 2.0, "unit": 8.0, "range": 70.0, "pitch": 0.04},
 	"scream_pain": {"file": _SCREAM_PAIN, "bus": "Voices", "db": -2.0, "unit": 6.0, "range": 70.0, "pitch": 0.03},
 	"groan_pain": {"file": _GROAN_PAIN, "bus": "Voices", "db": 0.0, "unit": 6.0, "range": 60.0, "pitch": 0.03},

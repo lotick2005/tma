@@ -45,6 +45,10 @@ var _solid_ok := true
 var _types := {}
 ## Клетки стен, на которых уже есть балкон, окно или навес (чтобы не лепить вплотную).
 var _facade_used := {}
+## Клетки без случайных вещей (PROP_DENSITY.keep_empty: место катсцены, проход мимо святого) и флаг «не ставить» —
+## случайные числа всё равно тянутся, чтобы остальная расстановка уровня не поменялась.
+var _empty := {}
+var _suppress := false
 
 
 func _init(quarter: QuarterBuilder, builder: LevelBuilder, density: Dictionary, glows: Glows) -> void:
@@ -54,6 +58,10 @@ func _init(quarter: QuarterBuilder, builder: LevelBuilder, density: Dictionary, 
 	_d = density
 	_rng.seed = int(density.get("seed", 7))
 	_mat = PropLibrary.material()
+	for rect: Array in density.get("keep_empty", []):
+		for r in range(rect[1], rect[3] + 1):
+			for c in range(rect[0], rect[2] + 1):
+				_empty[Vector2i(c, r)] = true
 
 
 func build(rooms: Array, explicit: Array, on_walls: Array = []) -> void:
@@ -100,6 +108,8 @@ func set_builder(builder: LevelBuilder, glows: Glows) -> void:
 ## Поставить предмет: MultiMesh для частых, иначе в общий пакет; коллизия — коробка по KINDS.
 ## scale — масштаб (дерево побольше, детская одежда поменьше).
 func place(kind: String, pos: Vector3, yaw: float, indoor: bool = false, scale: float = 1.0) -> void:
+	if _suppress:
+		return
 	if Corpses.has(kind):
 		# Тело — модель персонажа в запечённой позе (scripts/corpses.gd), без коллизии
 		var cxf := Transform3D(Basis(Vector3.UP, yaw).scaled(Vector3.ONE * scale), pos)
@@ -359,6 +369,8 @@ func _furnish_alleys() -> void:
 			var cell := Vector2i(c, r)
 			var clear := _keep_clear.has(cell)
 			var center := _q.cell_center(c, r)
+			# На ступенях террас случайных вещей нет: они стоят по высоте клетки и тонут в ступени (полировка демо 5)
+			_suppress = _empty.has(cell) or _q.in_terrace(r)
 			if k == "*":
 				# Вокруг завала — разлетевшиеся камни (без коллизии)
 				for i in 2:
@@ -395,6 +407,7 @@ func _furnish_alleys() -> void:
 				if _width_across(c, r, d) == 2:
 					var mid := _q.cell_center(c, r) - Vector3(d.x, 0, d.y) * 0.5 + Vector3.UP * 2.7
 					place("laundry", mid, _yaw_from_wall(d))
+		_suppress = false
 
 
 # ─── Фасады ──────────────────────────────────────────────────────────────────

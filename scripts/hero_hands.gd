@@ -4,7 +4,7 @@ extends Node
 ##  • Шаги шумят: каждый шаг (сигнал Player.footstep) — шумовое событие по режиму (присед / шаг / бег, data/stealth.gd).
 ##  • Задеть: CharacterBody3D сам тела не толкает — герой проходит сквозь предметы с физикой, а предмету даётся
 ##    толчок по скорости героя (шагом — качнулся, бегом — опрокинулся).
-##  • E — взять предмет в левую руку (правая со светильником): черепков до 3, камень или малый кувшин — по одному.
+##  • ПКМ — взять предмет в левую руку (правая со светильником): черепков до 3, камень или малый кувшин — по одному.
 ##  • ЛКМ — бросить по дуге левой рукой (анимация throw_left на костях левой руки). Чем дольше держишь — тем дальше.
 ##    Пока зажата — пунктир дуги и метка места падения: та же формула, что у броска (_throw_start + _trace),
 ##    до первой стены или пола.
@@ -29,7 +29,7 @@ var held_kind := ""
 var held_count := 0
 ## Предметы уровня (ставит уровень).
 var props: PhysProps
-## Записки уровня и экран чтения (этап 5б, ставит уровень): E над запиской — читать, а не брать.
+## Записки уровня и экран чтения (этап 5б, ставит уровень): ПКМ над запиской — читать, а не брать.
 var notes: Notes
 var notes_ui: NotesUI
 ## Светильник на земле, пока герой его не взял (ставит уровень, scripts/lamp_pickup.gd).
@@ -56,6 +56,7 @@ func _ready() -> void:
 	_player = get_parent() as Player
 	_arms = _player.get_node("Head/Camera3D/Arms")
 	_player.footstep.connect(_on_footstep)
+	_player.lean_shift.connect(_on_lean_shift)
 	_shape.radius = _player.collision_radius + S.BUMP_REACH
 	_shape.height = 1.2
 	_query.shape = _shape
@@ -89,6 +90,12 @@ func _on_footstep(mode: Player.MoveMode) -> void:
 		var since := Time.get_ticks_msec() / 1000.0 - _player.stood_up_at
 		if since < S.STAND_RISE_TIME:
 			r = minf(r, lerpf(S.STAND_RISE_FROM, r, since / S.STAND_RISE_TIME))
+	NoiseSystem.make_noise(_player.global_position, r, "step", _player)
+
+
+## Выглядывание (Q / E): переступил на месте — шум тише шага (S.LEAN_RADIUS, в приседе — как шаг в приседе).
+func _on_lean_shift() -> void:
+	var r: float = S.STEP_RADIUS.crouch if _player.is_crouched() else S.LEAN_RADIUS
 	NoiseSystem.make_noise(_player.global_position, r, "step", _player)
 
 
@@ -132,7 +139,7 @@ func _physics_process(delta: float) -> void:
 
 # ─── Светильник ──────────────────────────────────────────────────────────────
 
-## Светильник под взглядом и достаёт рукой (подсказка «E — взять» — Hints).
+## Светильник под взглядом и достаёт рукой (подсказка «ПКМ — взять» — Hints).
 func lamp_pickable() -> bool:
 	if lamp == null or not is_instance_valid(lamp) or GameState.has_lamp:
 		return false

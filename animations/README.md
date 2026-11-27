@@ -85,6 +85,12 @@
 | `throw_big` | бросок правой рукой с замахом и шагом (далеко) | разово | 168 (5.6) | — | +0.77 вперёд, -0.05 вправо | Throwing | B |
 | `throw_left` | бросок левой рукой от плеча (зеркальная копия — у героя правая занята светильником) | разово | 67 (2.2) | — | — | Throw (зеркало) | B |
 | `throw_big_left` | бросок левой рукой с замахом и шагом (зеркальная копия) | разово | 168 (5.6) | — | +0.77 вперёд, +0.05 вправо | Throwing (зеркало) | B |
+| `kneel_fix` | на коленях, руки работают у земли (основа удара первого святого: отрезок 1,1–3,7 с — на коленях) | цикл | 156 (5.2) | на месте | — | Quaternius UAL1: Fixing_Kneeling | Q |
+| `sword_attack` | удар мечом сверху (у первого святого — только кости правой руки: замах камнем) | разово | 46 (1.5) | — | — | Quaternius UAL1: Sword_Attack | Q |
+
+## Quaternius (скелет Q)
+
+`kneel_fix`, `sword_attack` — из Universal Animation Library от Quaternius (CC0, исходник `tools/models/src/quaternius/UAL1_Standard.glb`). Свой скелет (`pelvis`, `spine_01…03`, `upperarm_r`…), не Mixamo: ретаргет — `models/quaternius_bone_map.tres` (в `.import` файла). Файл — одна анимация со скелетом и треугольником `anim_skin`, выгружен без Blender: `python3 tools/models/extract_quaternius.py <имя в UAL1> animations/<имя>.glb`. В UAL1 нет root motion.
 
 ## Второй набор (ноябрь): паника, давка, схватка, броски
 
@@ -97,7 +103,7 @@
 
 ## Чего нет (можно докачать с Mixamo)
 
-- Святой на коленях бьёт камнем (катсцена «первый святой», §3): готовой анимации по-прежнему нет — взять `kneel_inspect` (или `pray_kneel`) и добавить удары правой рукой процедурно (IK), или поискать на Mixamo по словам kneel / hit / punch / stab / hammering.
+- ~~Святой на коленях бьёт камнем~~ — сделано (полировка демо 5): поза `kneel_fix` + правая рука из `sword_attack`, удар доводится IK до головы лежащего (`scripts/saint.gd`, `_apply_swing`).
 - Святой хватает стоя (zombie attack / grab), прислушивается (listening), тащит тело (drag), герой подбирает с земли (picking up), молоток (hammering) — во втором наборе не пришли; пока — `reach_pose`, `look_around_back`, `walk_carry`.
 - Распятый сотник: поза на кресте — процедурно (руки в стороны, голова набок).
 - Не взяты из второго набора: Arm Stretching (потягивается — не к месту), Push (1) (копия Push), Shove Reaction (1) (уже есть как `shoved`), Crawl Backwards и Terrified (уже есть).
