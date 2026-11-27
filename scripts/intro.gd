@@ -18,9 +18,11 @@ const FALL_MOTION := {
 	"fall_back": Vector3(0.55, 0.0, 0.78),
 	"hit_fall": Vector3(0.19, 0.0, 1.43),
 	"hit_collapse": Vector3(-0.49, 0.0, -1.21),
+	# Споткнулся (stumble 1,15× 0,7 с) и упал ничком (fall_flat, перекрёстное смешивание 0,25 с) — замерено целиком
+	"stumble_fall": Vector3(-0.09, 0.0, -2.42),
 }
 ## Через сколько секунд от начала анимации падения тело бьётся о камень (звук body_fall).
-const FALL_HIT := {"fall_flat": 0.9, "fall_back": 0.8, "hit_fall": 1.3, "hit_collapse": 2.2}
+const FALL_HIT := {"fall_flat": 0.9, "fall_back": 0.8, "hit_fall": 1.3, "hit_collapse": 2.2, "stumble_fall": 1.6}
 
 enum State { FREE, CUTSCENE, DONE }
 
@@ -257,6 +259,16 @@ func panic() -> void:
 	for i in _crowd.count():
 		if stumblers.size() < int(_d.stumblers) and not fallen.has(i) and not passers.has(i) and i % 3 == 1:
 			stumblers[i] = rng.randf_range(_d.stumble_at.x, _d.stumble_at.y)
+	# Пара из двух женщин: одна зовёт и тянет за руку другую, застывшую от страха (мини-сцена)
+	var pair: Array = _d.get("pair", [])
+	var pair_a: int = pair[0] if pair.size() == 2 else -1
+	var pair_b: int = pair[1] if pair.size() == 2 else -1
+	var pair_delay := 0.0
+	var pair_route := PackedVector3Array()
+	# Кто падает на колени и молится прямо на бегу
+	var pray := {}
+	for k: int in _d.get("pray_runners", []):
+		pray[k] = true
 	for i in _crowd.count():
 		var speed := rng.randf_range(_d.flee_speed.x, _d.flee_speed.y)
 		var delay := rng.randf_range(_d.flee_delay.x, _d.flee_delay.y)
@@ -288,31 +300,92 @@ func panic() -> void:
 					exit_name = "doors"
 				elif float(ce[0]) > 10.0 and i % 2 == 0:
 					exit_name = "east"
+				elif float(ce[0]) > 3.0 and i % 3 != 2:
+					exit_name = "east"
 			if exit_name == "doors":
 				var doors: Array = exits.doors
 				var door: Vector2 = doors[0] if float(ce[0]) < -5.0 else doors[1]
 				route.append(_level.map_point(door) + Vector3(rng.randf_range(-1.6, 1.6), 0.0, rng.randf_range(-0.9, 0.0)))
 				end = "bang"
 			else:
+				var lane := 2.2 if exit_name == "north" else 1.2
 				for p: Vector2 in exits[exit_name]:
-					route.append(_level.map_point(p) + Vector3(rng.randf_range(-1.2, 1.2), 0.0, rng.randf_range(-0.8, 0.8)))
-			# Не пробегающие мимо героя — в давке у выходов толкаются; кто-то спотыкается; кто ждал дольше — сжался
+					route.append(_level.map_point(p) + Vector3(rng.randf_range(-lane, lane), 0.0, rng.randf_range(-0.8, 0.8)))
+				# Каждый бежит своей дорогой: промежуточная точка в стороне, чтобы не сливаться в одну колонну
+				if not passers.has(i):
+					var to_first: Vector3 = route[0] - pos[i]
+					to_first.y = 0.0
+					if to_first.length() > 6.0:
+						var perp := Vector3(-to_first.z, 0.0, to_first.x).normalized()
+						route.insert(0, pos[i] + to_first * rng.randf_range(0.3, 0.6) + perp * rng.randf_range(-3.0, 3.0))
+			# Не пробегающие мимо героя — в давке у выходов толкаются (не все: часть прорывается бегом);
+			# кто-то спотыкается; кто ждал дольше — сжался
 			if not passers.has(i):
-				opts = {"crush": crush, "crush_anim": "push_walk" if i % 2 == 0 else "walk_shoved",
+				opts = {"crush": crush if i % 3 != 1 else [], "crush_anim": "push_walk" if i % 2 == 0 else "walk_shoved",
 					"cower": delay > 1.5 and i % 3 == 0,
 					"bang_anim": ["terrified", "scared_cower", "cover_peek"][i % 3]}
-				# Пока не побежал: кого-то толкнули, кто-то прижался и выглядывает, кто-то оцепенел
+				# Темп у каждого свой; не все срываются сразу (до 4 с)
+				if i % 5 == 3:
+					speed = rng.randf_range(3.0, 3.6)
+				if i % 4 == 2:
+					delay += rng.randf_range(0.5, 1.8)
+				# Пока не побежал: кого-то толкнули, кто-то прижался и выглядывает, кто-то оцепенел, кричит, оглядывается
 				if delay > 0.9 and i % 4 != 0:
-					opts.wait_anim = ["shoved", "cover_peek", "idle_defeated", "look_nervous", "shoved"][i % 5]
+					opts.wait_anim = ["shoved", "cover_peek", "idle_defeated", "yell_out", "look_nervous", "look_around_back",
+						"shoved", "scared_cower"][i % 8]
 				if stumblers.has(i):
 					opts.stumble_at = stumblers[i]
 					if stumblers.size() % 3 == 0 or i % 9 == 4:
 						opts.stumble_anim = "shoved_spin"
+				# На бегу кто-то замирает: оглянулся, закричал, оцепенел от ужаса
+				elif i % 3 == 0 and exit_name != "doors":
+					opts.pause_at = rng.randf_range(3.0, 9.0)
+					opts.pause_anim = ["look_around_back", "yell_out", "terrified", "look_nervous"][(i / 3) % 4]
+					opts.pause_time = rng.randf_range(1.0, 1.8)
 			# Молился на коленях — сначала встаёт
 			if String(ce[3]) == "kneel":
 				delay = maxf(delay, 1.7)
 				opts.wait_anim = "kneel_stand_up"
 				opts.wait_speed = 1.6
+			# Падает на колени и молится на бегу: короткая пробежка по направлению к Храму
+			if pray.has(i) and not passers.has(i) and i != pair_a and i != pair_b:
+				var to_temple: Vector2 = (_d.temple - Vector2(ce[0], ce[1])).normalized()
+				var from := Vector2(ce[0], ce[1])
+				route = PackedVector3Array([_level.map_point(from + to_temple * rng.randf_range(2.5, 4.0))])
+				end = "pray"
+				opts = {"wait_anim": "kneel_stand_up", "wait_speed": 1.6} if String(ce[3]) == "kneel" else {}
+				if String(ce[3]) == "kneel":
+					delay = maxf(delay, 1.7)
+				speed = rng.randf_range(3.0, 3.8)
+			# Пара женщин: A зовёт (point_angry), добегает до B и тянет её за собой к восточному выходу; B застыла (scared_cower)
+			if i == pair_a or i == pair_b:
+				var ex: Array = exits.east
+				var cb: Array = _d.crowd[pair_b]
+				var b_pos: Vector3 = _level.map_point(Vector2(cb[0], cb[1]))
+				if i == pair_a:
+					delay = 1.4
+					speed = 4.4
+					var ca: Array = _d.crowd[pair_a]
+					var a_pos: Vector3 = _level.map_point(Vector2(ca[0], ca[1]))
+					var along: Vector3 = b_pos - a_pos
+					along.y = 0.0
+					var meet: Vector3 = b_pos - along.normalized() * 0.8
+					pair_delay = delay + a_pos.distance_to(meet) / speed
+					route = PackedVector3Array([meet])
+					for pt: Vector2 in ex:
+						route.append(_level.map_point(pt) + Vector3(0.6, 0.0, 0.5))
+					pair_route = route
+					opts = {"wait_anim": "point_angry", "no_sep": true}
+				else:
+					delay = pair_delay
+					speed = 4.2
+					route = PackedVector3Array()
+					for pt: Vector2 in ex:
+						route.append(_level.map_point(pt) + Vector3(-0.6, 0.0, -0.4))
+					opts = {"cower": true, "no_sep": true}
+				end = "hide"
+			# Кто и как бежит: пробежка, бег, быстрый бег — своя анимация и скорость
+			opts.run_style = i % 3
 		_crowd.flee(i, route, speed, delay, end, opts)
 	if _barrier and is_instance_valid(_barrier):
 		_barrier.queue_free()

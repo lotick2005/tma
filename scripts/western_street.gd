@@ -219,39 +219,21 @@ func _trail_props() -> Array:
 	return out
 
 
-## Подвал, куда сложили мёртвых (DEAD_CELLAR): тела свалены грудой друг на друга — слоями, каждый слой выше и теснее
-## к середине, тела повёрнуты как попало и лежат неровно (наклон). По видам — MultiMesh.
+## Подвал, куда сложили мёртвых (DEAD_CELLAR): тела свалены грудой друг на друга — три слоя (5 + 4 + 3 тела), каждое на
+## своём месте и под своим углом (DEAD_CELLAR.heap.bodies), верхние лежат неровно (наклон). По видам — MultiMesh.
 func _build_dead_cellar() -> void:
-	var dc: Dictionary = D.DEAD_CELLAR
-	var kinds: Array = dc.kinds
-	var heap: Dictionary = dc.heap
-	var rng := RandomNumberGenerator.new()
-	rng.seed = heap.seed
+	var heap: Dictionary = D.DEAD_CELLAR.heap
 	var center: Vector2 = heap.center
-	var half: Vector2 = heap.half
 	var floor_y: float = _quarter.ground[floori(center.y)] - D.QUARTER.basement_depth
-	var layers: Array = heap.layers
-	var n := 0
 	_b.layer = LevelBuilder.INTERIOR_LAYER
-	for li in layers.size():
-		var count: int = layers[li]
-		# Верхние слои — ближе к середине
-		var shrink := 1.0 - 0.3 * li
-		for i in count:
-			# По кругу с разбросом: тела не ложатся точно друг на друга
-			var ang := TAU * (i + rng.randf_range(-0.3, 0.3)) / count + li * 0.7
-			var rad := sqrt(rng.randf_range(0.08, 1.0)) * shrink
-			var x := _quarter.x0 + center.x + cos(ang) * rad * half.x
-			var z := _quarter.z0 + center.y + sin(ang) * rad * half.y
-			var kind: String = kinds[n % kinds.size()]
-			n += 1
-			var tilt := deg_to_rad(float(heap.tilt)) * (0.25 if li == 0 else 1.0)
-			var basis := Basis(Vector3.UP, rng.randf() * TAU) \
-				* Basis(Vector3.RIGHT, rng.randf_range(-tilt, tilt)) * Basis(Vector3.BACK, rng.randf_range(-tilt, tilt))
-			var y := floor_y + float(heap.layer_height) * li * rng.randf_range(0.85, 1.1)
-			var xf := Transform3D(basis, Vector3(x, y, z))
-			PropRegistry.add(kind, xf)
-			_b.add_instance(Corpses.mesh(kind), xf, Corpses.material(kind))
+	for e: Array in heap.bodies:
+		var kind: String = e[0]
+		var basis := Basis(Vector3.UP, deg_to_rad(float(e[3]))) \
+			* Basis(Vector3.RIGHT, deg_to_rad(float(e[5]))) * Basis(Vector3.BACK, deg_to_rad(float(e[6])))
+		var xf := Transform3D(basis, Vector3(_quarter.x0 + center.x + float(e[1]), floor_y + float(e[4]),
+			_quarter.z0 + center.y + float(e[2])))
+		PropRegistry.add(kind, xf)
+		_b.add_instance(Corpses.mesh(kind), xf, Corpses.material(kind))
 	_b.layer = 1
 
 

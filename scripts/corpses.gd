@@ -22,6 +22,7 @@ const KINDS := {
 	# точка тела = где кончился root motion падения, поэтому тело лежит ровно там и так, как человек упал.
 	"corpse_fell_back": ["townsman", "fall_back", -1.0, false, Vector2(0.0, 0.0), "упал навзничь в давке", ""],
 	"corpse_fell_collapse_f": ["townswoman", "hit_collapse", -1.0, false, Vector2(0.0, 0.0), "согнулась от удара и завалилась", ""],
+	"corpse_fell_stumble_f": ["townswoman", "fall_flat", -1.0, false, Vector2(0.0, 0.0), "споткнулась на бегу и упала ничком", ""],
 	"corpse_fell_hit": ["townsman", "hit_fall", -1.0, false, Vector2(0.0, 0.0), "сбит ударом в плечо, упал на спину", ""],
 	# Солдат сидит у стены (точка у стены, лицом от неё): сполз спиной по стене, ноги согнуты, руки упёрты в землю —
 	# первый кадр crawl_back (отползал от них, пока не упёрся в стену)

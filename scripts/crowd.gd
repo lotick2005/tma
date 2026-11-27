@@ -19,6 +19,12 @@ extends Node3D
 ## shoved_spin — толкнули, развернуло). В конце — "hide" (убежал, пропал из виду), "fall" (падает анимацией
 ## opts.fall_anim и остаётся лежать — затоптан), "bang" (добежал до двери и бьётся в неё; opts.bang_anim —
 ## что делает у двери: terrified, scared_cower, cover_peek).
+## Разнообразие паники (полировка демо 4): opts.pause_at / pause_anim / pause_time — через столько метров бега замирает
+## на pause_time с и снова бежит (оглянулся, закричал, оцепенел); opts.run_style — «пробежка» (run, медленно),
+## «бег» (run) или «быстрый бег» (run_fast), у каждого свой темп и фаза; end "pray" — падает на колени и молится
+## (pray_kneel_down, остаётся); opts.no_sep — не расталкивается с соседями (те, кто должен пройти точно по маршруту).
+## Бегущие расталкиваются (SEP_*): толпа не сливается в одну кучу, хотя коллизии у бегущих нет.
+## Падение opts.fall_anim == "stumble_fall": споткнулся (stumble) и через STUMBLE_FALL_CUT секунд — в fall_flat.
 ## Коллизия — цилиндр на каждого (герой не проходит сквозь людей), двигается вместе с ним.
 ## Дальние обновляют анимацию реже (LOD_*): каждый человек — 1 вызов отрисовки, скиннинг — главная цена.
 
@@ -36,6 +42,13 @@ const CRUSH_SPEED := {"walk_shoved": 1.15, "push_walk": 0.85}
 ## Оглядываются на крик вестника: доля стоящих и бродящих (поющие молятся дальше), задержка, с.
 const ALERT_SHARE := 0.6
 const ALERT_DELAY := Vector2(0.6, 4.0)
+## Расталкивание бегущих: ближе SEP_RADIUS м друг к другу — расходятся со скоростью SEP_SPEED м/с.
+const SEP_RADIUS := 0.8
+const SEP_SPEED := 1.6
+## «Споткнулся и упал»: через сколько секунд stumble (1,15×) переходит в fall_flat; root motion всего падения —
+## Intro.FALL_MOTION["stumble_fall"] (замерено).
+const STUMBLE_FALL_CUT := 0.7
+const STUMBLE_FALL_SPEED := 1.15
 ## Паника: кто ждёт дольше этого (с), не в ужасе на месте, а озирается или сжимается.
 const WAIT_CALM := 0.6
 ## Кто молится (их крик вестника не отвлекает) и чем: поведение → анимация.
@@ -148,7 +161,10 @@ func flee(i: int, route: PackedVector3Array, speed: float, delay: float, end := 
 		"crush": opts.get("crush", []), "crush_anim": opts.get("crush_anim", "walk_shoved"),
 		"stumble_at": float(opts.get("stumble_at", -1.0)), "ran": 0.0, "stumble": 0.0,
 		"stumble_anim": opts.get("stumble_anim", "stumble"), "bang_anim": opts.get("bang_anim", "terrified"),
-		"fall_anim": opts.get("fall_anim", "fall_flat"), "fall_yaw": opts.get("fall_yaw", null)}
+		"fall_anim": opts.get("fall_anim", "fall_flat"), "fall_yaw": opts.get("fall_yaw", null),
+		"pause_at": float(opts.get("pause_at", -1.0)), "pause_anim": opts.get("pause_anim", "look_around_back"),
+		"pause_time": float(opts.get("pause_time", 1.2)), "pause": 0.0, "run_style": int(opts.get("run_style", 1)),
+		"no_sep": bool(opts.get("no_sep", false)), "fall_cut": -1.0}
 	p.forced = ""
 	p.erase("alert_in")
 	if p.has("shape"):
@@ -157,11 +173,14 @@ func flee(i: int, route: PackedVector3Array, speed: float, delay: float, end := 
 	var wait_anim: String = opts.get("wait_anim", "")
 	if wait_anim != "" and delay >= WAIT_CALM:
 		# Разовые (встаёт с колен, толкнули) — с начала; циклы — со случайного места
-		var once := wait_anim in ["kneel_stand_up", "shoved"]
+		var once := wait_anim in ["kneel_stand_up", "shoved", "yell_out"]
 		m.play(wait_anim, 0.3, float(opts.get("wait_speed", 1.0)), once)
 		p.anim = wait_anim
 		if not once:
 			m.randomize_phase(_rng)
+		elif wait_anim != "kneel_stand_up" and m.anim:
+			# Разовые начинаются не все разом: кого-то уже толкнули, кто-то только кричит
+			m.anim.seek(_rng.randf_range(0.0, 0.3) * m.anim.current_animation_length, true)
 	elif delay < WAIT_CALM:
 		_set_anim(p, "terrified", 0.3, _rng.randf_range(1.0, 1.4))
 		m.randomize_phase(_rng)
@@ -265,7 +284,38 @@ func _update(delta: float) -> void:
 		m.rotation.y = p.yaw
 		if p.has("shape"):
 			(p.shape as CollisionShape3D).position = (p.pos as Vector3) + Vector3.UP * 0.85
+	_separate(delta)
 	_update_lod(delta)
+
+
+## Бегущие расталкиваются: два человека ближе SEP_RADIUS расходятся (коллизии у бегущих нет, но кучей не сливаются).
+## Не трогает тех, кто упадёт в точку (end "fall"), стоит, ждёт или помечен no_sep.
+func _separate(delta: float) -> void:
+	var movers: Array[Dictionary] = []
+	for p in _people:
+		if not p.has("flee"):
+			continue
+		var f: Dictionary = p.flee
+		if f.done or f.delay > 0.0 or f.pause > 0.0 or f.stumble > 0.0 or f.end == "fall" or f.no_sep:
+			continue
+		movers.append(p)
+	for a in movers.size():
+		for b in range(a + 1, movers.size()):
+			var pa: Dictionary = movers[a]
+			var pb: Dictionary = movers[b]
+			var d: Vector3 = pa.pos - pb.pos
+			d.y = 0.0
+			var dist := d.length()
+			if dist >= SEP_RADIUS:
+				continue
+			if dist < 0.01:
+				d = Vector3(_rng.randf_range(-1.0, 1.0), 0.0, _rng.randf_range(-1.0, 1.0))
+				dist = 0.01
+			var push := d / dist * SEP_SPEED * delta * (1.0 - dist / SEP_RADIUS)
+			pa.pos += push
+			pb.pos -= push
+			(pa.model as CharacterModel).position = pa.pos
+			(pb.model as CharacterModel).position = pb.pos
 
 
 ## Паника: ждёт, бежит по точкам (в давке — толкается и идёт, может споткнуться), в конце — пропадает,
@@ -273,10 +323,23 @@ func _update(delta: float) -> void:
 func _update_flee(p: Dictionary, delta: float) -> void:
 	var f: Dictionary = p.flee
 	var m: CharacterModel = p.model
+	if f.fall_cut >= 0.0:
+		# Споткнулся и падает: через STUMBLE_FALL_CUT stumble переходит в fall_flat
+		f.fall_cut -= delta
+		if f.fall_cut < 0.0:
+			m.play("fall_flat", 0.25, 1.0, true)
+			p.anim = "fall_flat"
+		return
 	if f.done:
 		return
 	if f.delay > 0.0:
 		f.delay -= delta
+		return
+	# Замер на бегу (оглянулся, закричал): стоит pause секунд и бежит дальше
+	if f.pause > 0.0:
+		f.pause -= delta
+		if f.pause <= 0.0:
+			p.anim = ""
 		return
 	# Споткнулся: стоит, пока не доиграет stumble, потом root motion — в его точку, бежит дальше
 	if f.stumble > 0.0:
@@ -320,12 +383,20 @@ func _update_flee(p: Dictionary, delta: float) -> void:
 			p.anim = sa
 			f.stumble = Anims.library().get_animation(sa).length / 1.15 - 0.25
 			return
+		if f.pause_at >= 0.0 and f.ran >= f.pause_at and crush == "":
+			f.pause_at = -1.0
+			f.pause = f.pause_time
+			var pa: String = f.pause_anim
+			m.play(pa, 0.2, _rng.randf_range(0.9, 1.15), true)
+			p.anim = pa
+			return
 		var a := crush
 		if a == "":
+			# Темп у каждого свой: пробежка, бег, быстрый бег
 			a = "run_fast" if f.speed > 5.0 else "run"
 		if p.anim != a:
-			_set_anim(p, a, 0.3 if crush != "" or p.anim == "walk_shoved" or p.anim == "push_walk" else 0.2,
-				clampf(Anims.scale_for(a, speed), 0.6, 1.6))
+			var sc := clampf(Anims.scale_for(a, speed) * [0.9, 1.0, 1.1][f.run_style % 3], 0.6, 1.7)
+			_set_anim(p, a, 0.3 if crush != "" or p.anim == "walk_shoved" or p.anim == "push_walk" else 0.2, sc)
 			m.randomize_phase(_rng)
 		return
 	f.done = true
@@ -334,8 +405,18 @@ func _update_flee(p: Dictionary, delta: float) -> void:
 			m.rotation.y = p.turn if f.fall_yaw == null else float(f.fall_yaw)
 			m.set_update_interval(0.0)
 			m.reset_motion()
-			m.play(f.fall_anim, 0.15, 1.0, true)
+			if f.fall_anim == "stumble_fall":
+				m.play("stumble", 0.2, STUMBLE_FALL_SPEED, true)
+				f.fall_cut = STUMBLE_FALL_CUT
+				p.anim = "stumble"
+			else:
+				m.play(f.fall_anim, 0.2, 1.0, true)
 			fell.emit(m.global_position, f.fall_anim)
+		"pray":
+			# Упал на колени посреди бегущих и молится (Ам 8:10: «песни ваши в плач»)
+			m.reset_motion()
+			m.play("pray_kneel_down", 0.3, _rng.randf_range(0.9, 1.1), true)
+			p.anim = "pray_kneel_down"
 		"bang":
 			_set_anim(p, f.bang_anim, 0.25, 1.5 if f.bang_anim == "terrified" else 1.0)
 			m.randomize_phase(_rng)

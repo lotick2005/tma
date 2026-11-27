@@ -8,8 +8,10 @@ extends RefCounted
 
 ## Плитки атласа (4 в ряд, ATLAS_ROWS рядов по 64 пикселя).
 enum Tile { CLAY, CLAY_DARK, WOOD, WOOD_DARK, LINEN, CLOTH_RED, CLOTH_BLUE, STRAW, SACK, STONE, BASALT, LEAF, BARK, METAL, FOOD, PALM,
-	BLOOD, BLOOD_DARK, SHROUD, DUST, CLOTH_OCHRE, SOOT, IRON, COIN, SKIN, HAIR, GRASS, BLOOD_BLACK }
-const ATLAS_ROWS := 7
+	BLOOD, BLOOD_DARK, SHROUD, DUST, CLOTH_OCHRE, SOOT, IRON, COIN, SKIN, HAIR, GRASS, BLOOD_BLACK,
+	# Полотнища рынка (без каймы — на сетке квадратов кайма повторялась бы полосами): выцветший красный, охра, грязно-белый
+	CLOTH_FADED, CLOTH_SAND, CLOTH_WHITE }
+const ATLAS_ROWS := 8
 
 ## Свойства предметов: collide — размер коробки коллизии (ноль — без неё, можно пройти/перешагнуть), collide_at — её сдвиг;
 ## mm — часто повторяется, рисуется через MultiMeshInstance3D; wall — вешается на стену (точка — у стены);
@@ -49,6 +51,11 @@ const KINDS := {
 	"basket_figs": {"collide": Vector3.ZERO},
 	"coins": {"collide": Vector3.ZERO, "mm": true},
 	"stall_overturned": {"collide": Vector3(2.0, 0.9, 1.1)},
+	# Полотнища на каркасах лотков и высыпанное зерно (полировка демо 4); точка — та же, что у лотка (stall), тот же поворот
+	"stall_cloth_red": {"collide": Vector3.ZERO},
+	"stall_cloth_ochre": {"collide": Vector3.ZERO},
+	"stall_cloth_white": {"collide": Vector3.ZERO},
+	"grain_spill": {"collide": Vector3.ZERO},
 	"bread": {"collide": Vector3.ZERO, "mm": true},
 	# Пасха
 	"palm_branch": {"collide": Vector3.ZERO, "mm": true},
@@ -226,6 +233,9 @@ static func _atlas() -> ImageTexture:
 		ProcTextures.mottled(64, Color(0.13, 0.1, 0.08), 0.04, 0.06, 86),          # HAIR
 		ProcTextures.stripes(64, 10, Color(0.38, 0.42, 0.2), Color(0.5, 0.48, 0.26), 87),  # GRASS — сухая трава
 		ProcTextures.mottled(64, Color(0.22, 0.026, 0.032), 0.03, 0.08, 88),      # BLOOD_BLACK — самая тёмная, но не чёрная
+		_ph(ProcTextures.mottled(64, Color(0.5, 0.2, 0.17), 0.04, 0.12, 91), "hessian_380", Color(0.5, 0.2, 0.17), Vector2i(0, 64)),  # CLOTH_FADED
+		_ph(ProcTextures.mottled(64, Color(0.66, 0.5, 0.24), 0.04, 0.1, 92), "hessian_380", Color(0.66, 0.5, 0.24), Vector2i(64, 64)),  # CLOTH_SAND
+		_ph(ProcTextures.mottled(64, Color(0.7, 0.66, 0.55), 0.05, 0.16, 93), "hessian_230", Color(0.7, 0.66, 0.55), Vector2i(0, 64)),  # CLOTH_WHITE
 	]
 	var img := Image.create_empty(256, 64 * ATLAS_ROWS, false, Image.FORMAT_RGB8)
 	for i in tiles.size():
@@ -521,6 +531,77 @@ static func _make_stall() -> Mesh:
 	# Тканевый навес наклоном вперёд, с двух сторон
 	b.quad(Vector3(-1.05, 2.02, 0.55), Vector3(1.05, 2.02, 0.55), Vector3(1.05, 1.62, -0.75), Vector3(-1.05, 1.62, -0.75),
 		Tile.CLOTH_BLUE, true)
+	return b.commit()
+
+
+## Полотнище поверх каркаса лотка (то же место и поворот, что у stall): провисает, края рваные — дыры, оторванный
+## угол; спереди свисает кайма неровной длины. Лежит на 6–10 см выше синей ткани лотка, чтобы грани не слипались.
+static func _stall_cloth(tile: int, seed: int) -> Mesh:
+	var b := PB.new()
+	var rng := _rng(seed)
+	var nx := 6
+	var nz := 4
+	var x0 := -1.2
+	var x1 := 1.2
+	var z0 := 0.66
+	var z1 := -0.9
+	var grid := []
+	for j in nz + 1:
+		var row := []
+		var v := float(j) / nz
+		var z := lerpf(z0, z1, v)
+		for i in nx + 1:
+			var u := float(i) / nx
+			var edge := i == 0 or i == nx or j == nz
+			var jit := 0.06 if edge else 0.0
+			var y := 2.12 + (z - 0.55) * 0.3077 - 0.05 * sin(PI * u) * sin(PI * v) + rng.randf_range(-0.012, 0.012)
+			row.append(Vector3(lerpf(x0, x1, u) + rng.randf_range(-jit, jit), y, z + rng.randf_range(-jit, jit)))
+		grid.append(row)
+	for j in nz:
+		for i in nx:
+			# Рваная ткань: по краю пропуски, задний угол оторван
+			var boundary := i == 0 or i == nx - 1 or j == nz - 1
+			if (boundary and rng.randf() < 0.22) or (i == nx - 1 and j == nz - 1):
+				continue
+			b.quad(grid[j][i], grid[j][i + 1], grid[j + 1][i + 1], grid[j + 1][i], tile, true)
+	# Кайма спереди: полосы разной длины, одна почти оборвана
+	var yf := 2.12 + (z0 - 0.55) * 0.3077
+	var vn := 6
+	var drops := []
+	for i in vn + 1:
+		drops.append(rng.randf_range(0.2, 0.55))
+	drops[2] = 0.1
+	drops[3] = 0.14
+	for i in vn:
+		var xa := lerpf(x0, x1, float(i) / vn)
+		var xb := lerpf(x0, x1, float(i + 1) / vn)
+		b.quad(Vector3(xa, yf, z0 + 0.01), Vector3(xb, yf, z0 + 0.01), Vector3(xb, yf - drops[i + 1], z0 + 0.07),
+			Vector3(xa, yf - drops[i], z0 + 0.07), tile, true)
+	return b.commit()
+
+
+static func _make_stall_cloth_red() -> Mesh:
+	return _stall_cloth(Tile.CLOTH_FADED, 301)
+
+
+static func _make_stall_cloth_ochre() -> Mesh:
+	return _stall_cloth(Tile.CLOTH_SAND, 302)
+
+
+static func _make_stall_cloth_white() -> Mesh:
+	return _stall_cloth(Tile.CLOTH_WHITE, 303)
+
+
+## Высыпанное зерно: неровное пятно соломенного цвета и россыпь зёрен вокруг.
+static func _make_grain_spill() -> Mesh:
+	var b := PB.new()
+	var rng := _rng(311)
+	_blob(b, Vector3(0.0, 0.012, 0.0), 0.34, 0.27, Tile.STRAW, 312, 8)
+	for i in 16:
+		var a := rng.randf() * TAU
+		var r := rng.randf_range(0.15, 0.62)
+		b.box(Vector3(cos(a) * r, 0.008, sin(a) * r * 0.8), Vector3(0.035, 0.012, 0.03), Tile.STRAW if i % 3 else Tile.FOOD,
+			Basis(Vector3.UP, rng.randf() * PI))
 	return b.commit()
 
 
