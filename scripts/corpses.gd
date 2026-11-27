@@ -56,8 +56,27 @@ static func mesh(kind: String) -> Mesh:
 		return _meshes[kind]
 	var k: Array = KINDS[kind]
 	var m := CharacterModel.bake_pose(k[0], k[1], k[2], k[6] if k.size() > 6 else "Hips", k[4])
+	# Тело лежит на земле самой нижней точкой (полировка демо 5: раньше низ позы уходил под землю на 5–27 см)
+	var low := m.get_aabb().position.y
+	if absf(low) > 0.002:
+		var lifted := ArrayMesh.new()
+		for s in m.get_surface_count():
+			var arr := m.surface_get_arrays(s)
+			var v: PackedVector3Array = arr[Mesh.ARRAY_VERTEX]
+			for i in v.size():
+				v[i].y -= low
+			arr[Mesh.ARRAY_VERTEX] = v
+			lifted.add_surface_from_arrays(Mesh.PRIMITIVE_TRIANGLES, arr)
+			lifted.surface_set_material(s, m.surface_get_material(s))
+		lifted.set_meta("head", m.get_meta("head", Vector3.ZERO) - Vector3.UP * low)
+		m = lifted
 	_meshes[kind] = m
 	return m
+
+
+## Точка головы тела в осях предмета (таз в начале координат, голова в −Z).
+static func head_point(kind: String) -> Vector3:
+	return mesh(kind).get_meta("head", Vector3.ZERO)
 
 
 static func material(kind: String) -> Material:

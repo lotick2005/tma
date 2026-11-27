@@ -578,6 +578,28 @@ func shard_break() -> AudioStreamWAV:
 	return _wav(_normalize(_edges(out, 0.002), 0.9))
 
 
+## Засов ворот бьёт в железную скобу (конец демо: заперто): тупой удар дерева и короткий железный лязг,
+## засов подскакивает и бьёт второй раз, тише.
+func bolt_clank() -> AudioStreamWAV:
+	var out := _buf(0.7)
+	var partials := [[620.0, 0.16], [1010.0, 0.11], [1570.0, 0.08], [2330.0, 0.05], [3180.0, 0.03]]
+	for hit: Array in [[0.0, 1.0], [_rng.randf_range(0.09, 0.14), 0.45], [_rng.randf_range(0.2, 0.26), 0.18]]:
+		var at: float = hit[0]
+		var g: float = hit[1]
+		_thump(out, at, 140.0, 80.0, 0.025, 0.7 * g)
+		_burst(out, at, 0.003, 0.6 * g, 4500.0)
+		var start := int(at * _rate)
+		var detune := _rng.randf_range(0.97, 1.03)
+		for p: Array in partials:
+			var f: float = p[0] * detune
+			var decay: float = p[1]
+			var n := mini(int(decay * 5.0 * _rate), out.size() - start)
+			for i in n:
+				var t := float(i) / _rate
+				out[start + i] += sin(TAU_F * f * t) * exp(-t / decay) * 0.22 * g
+	return _wav(_normalize(_edges(out, 0.002), 0.9))
+
+
 ## Упал камень: удар и затихающие подскоки.
 func stone_fall() -> AudioStreamWAV:
 	var out := _buf(1.8)

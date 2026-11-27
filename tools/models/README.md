@@ -12,6 +12,7 @@
 4. **Модель → GLB:** `blender -b -P export_model.py -- <src.fbx|src.blend> models/<имя>.glb <имя> <рабочая_папка>` — сбрасывает позу, запекает поворот Mixamo, добавляет кость `Root`, текстура 128×128 nearest, ≤ 4 кости на вершину.
 5. **Анимации → GLB:** список — `anims.json` (`[папка, файл FBX, имя, loop|once|pose, описание]`), затем `blender -b -P export_anims.py -- <папка с FBX> anims.json animations/ manifest.json` (переменная `ONLY=имя1,имя2` — только эти). Циклы — на месте, без повтора последнего кадра; разовые — перемещение в `Root`.
    Шестое поле `"ground"` в строке `anims.json` — запись сделана на возвышении: опустить так, чтобы в первом кадре стопы стояли на земле. Зеркальная копия (бросок левой вместо правой): `blender -b -P mirror_anim.py -- <in.glb> <out.glb> <имя>`.
+5б. **Анимация из Quaternius UAL1** (свой скелет, CC0): `python3 tools/models/extract_quaternius.py <имя> animations/<имя>.glb` — без Blender; в `.import` — `retarget/bone_map` = `res://models/quaternius_bone_map.tres` (образец — `animations/kneel_fix.glb.import`).
 6. **Проверка:** `verify_glb.py` (суставы GLB совпадают с FBX), `render_anim.py` (кадры анимации на модели в Blender). Таблицу `animations/README.md` пересобрать из `manifest.json`.
 
 ## Подводные камни (уже учтены)

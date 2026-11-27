@@ -217,6 +217,8 @@ static func bake_pose(model_name: String, anim_name: String, time := -1.0, cente
 		var c := turn * skel.get_bone_global_pose(skel.find_bone(center_bone)).origin
 		turn.origin = Vector3(offset.x - c.x, 0.0, offset.y - c.z)
 	var out := ArrayMesh.new()
+	# Где голова в запечённой позе (катсцена первого святого: камень падает на голову лежащего)
+	out.set_meta("head", turn * skel.get_bone_global_pose(skel.find_bone("Head")).origin)
 	for s in mi.mesh.get_surface_count():
 		var arr := mi.mesh.surface_get_arrays(s)
 		var v: PackedVector3Array = arr[Mesh.ARRAY_VERTEX]

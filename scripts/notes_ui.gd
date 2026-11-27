@@ -2,11 +2,11 @@ class_name NotesUI
 extends CanvasLayer
 ## Чтение записок и журнал (этап 5б, CLAUDE.md §6). Экран в низком разрешении (как вся игра, 320×240),
 ## тёмная подложка, игра на паузе.
-##  • open_note(id) — прочитать записку из мира (зовёт HeroHands по E). E — дальше по страницам, на последней — закрыть.
+##  • open_note(id) — прочитать записку из мира (зовёт HeroHands по ПКМ). ПКМ — дальше по страницам, на последней — закрыть.
 ##    Прочитанная попадает в журнал: GameState.read_notes (id в порядке прочтения).
 ##  • Священная записка — цитата, под ней подпись-источник, пустая строка и приписка (чуть темнее). Если всё вместе не
 ##    влезает в лист — две страницы: цитата с подписью, потом приписка. Шрифт не уменьшаем (BODY_FONT).
-##  • Tab — журнал: список прочитанных. W / S (или колесо мыши) — выбрать, E (или ЛКМ) — перечитать, E — назад к
+##  • Tab — журнал: список прочитанных. W / S (или колесо мыши) — выбрать, ПКМ (или ЛКМ) — перечитать, ПКМ — назад к
 ##    списку, Tab — закрыть.
 ## Звук: свиток — parchment, табличка и черепок — wood_clack (play_2d с «always»: на паузе тоже звучит).
 
@@ -203,9 +203,9 @@ func _update_hint() -> void:
 		return
 	var last := _page_i >= _pages.size() - 1
 	if mode == Mode.READ:
-		_hint.text = "E — закрыть" if last else "E — дальше"
+		_hint.text = "ПКМ — закрыть" if last else "ПКМ — дальше"
 	else:
-		_hint.text = ("E — назад · Tab — закрыть" if last else "E — дальше · Tab — закрыть")
+		_hint.text = ("ПКМ — назад · Tab — закрыть" if last else "ПКМ — дальше · Tab — закрыть")
 
 
 ## Высота страницы (какие части видны), пикселей, при ширине BODY_W.
@@ -235,7 +235,7 @@ func _fill_list() -> void:
 		_list.add_child(_label("Пусто", 10, DIM))
 		_journal_hint.text = "Tab — закрыть"
 		return
-	_journal_hint.text = "W / S — выбрать · E — читать · Tab — закрыть"
+	_journal_hint.text = "W / S — выбрать · ПКМ — читать · Tab — закрыть"
 	# Окно списка: не больше 9 строк вокруг выбранной
 	var first := clampi(_sel - 4, 0, maxi(ids.size() - 9, 0))
 	for i in range(first, mini(first + 9, ids.size())):
@@ -246,6 +246,7 @@ func _fill_list() -> void:
 
 
 func _short(t: String) -> String:
+	t = t.replace("\n", " ")
 	if t.length() <= LIST_CHARS:
 		return t
 	var cut := t.substr(0, LIST_CHARS)

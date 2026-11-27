@@ -17,8 +17,11 @@ const DETAIL_RANGE_DARK := 36.0
 const DETAIL_RANGE_DAY := 70.0
 const SAINT_SCENE := preload("res://scenes/actors/saint.tscn")
 const FIRST_SAINT_CUTSCENE := "res://data/cutscenes/first_saint.gd"
-## Светильник лежит перед героем на таком расстоянии от места пробуждения, м.
-const LAMP_DIST := 1.3
+## Светильник горит на камне впереди героя (полировка демо 5: раньше лежал вплотную, в 1,3 м): на таком расстоянии
+## от места пробуждения, м (если ближе стена — ближе к герою, но не меньше LAMP_DIST_MIN); камень — LAMP_STONE (x, y, z), м.
+const LAMP_DIST := 3.0
+const LAMP_DIST_MIN := 1.6
+const LAMP_STONE := Vector3(0.46, 0.32, 0.38)
 
 ## Пресеты освещения: «тьма» — вся игра, «день» — вступление (этап 4). Переключатель — в панели (0).
 @export var darkness: LightingPreset
@@ -58,6 +61,8 @@ var _first_saint: Saint
 var _first_scene := false
 ## Середина створок ворот Антонии у земли (для конца демо).
 var _gate_point := Vector3.ZERO
+## Коробки скалы, здания, башен Антонии и стены у ворот (мир) — по ним конец демо ищет край скалы на фоне неба.
+var _skyline_boxes: Array[AABB] = []
 var _stealth := false
 ## Записки (этап 5б): в мире и экран чтения / журнал.
 var _notes: Notes
@@ -243,6 +248,7 @@ func _process(_delta: float) -> void:
 		return
 	if _stealth:
 		_check_first_saint()
+		_check_peek_hint()
 		if not _pending_checkpoint.is_empty() and not _control_busy():
 			var c := _pending_checkpoint
 			_set_checkpoint(c[0], c[1], c[2])
@@ -272,14 +278,42 @@ func _spawn_lamp() -> void:
 		return
 	var to := goal_point() - _player.global_position
 	to.y = 0.0
-	var at := _player.global_position + to.normalized() * LAMP_DIST
+	to = to.normalized()
+	var space := get_world_3d().direct_space_state
+	# Не за стеной: луч на высоте пояса, камень встаёт в 0,5 м перед препятствием
+	var dist := LAMP_DIST
+	var eye := _player.global_position + Vector3.UP * 0.8
+	var wq := PhysicsRayQueryParameters3D.create(eye, eye + to * (LAMP_DIST + 0.5), 1, [_player.get_rid()])
+	var wall := space.intersect_ray(wq)
+	if not wall.is_empty():
+		dist = maxf(LAMP_DIST_MIN, eye.distance_to(wall.position) - 0.5)
+	var at := _player.global_position + to * dist
 	var q := PhysicsRayQueryParameters3D.create(at + Vector3.UP * 1.0, at + Vector3.DOWN * 1.0, 1)
-	var hit := get_world_3d().direct_space_state.intersect_ray(q)
+	var hit := space.intersect_ray(q)
 	if not hit.is_empty():
 		at = hit.position
+	# Камень, на котором стоит светильник (с коллизией: высота ниже шага героя — можно наступить)
+	var stone := StaticBody3D.new()
+	stone.name = "LampStone"
+	add_child(stone)
+	stone.global_transform = Transform3D(Basis(Vector3.UP, atan2(-to.x, -to.z) + 0.35), at)
+	var box := BoxMesh.new()
+	box.size = LAMP_STONE
+	var mi := MeshInstance3D.new()
+	mi.mesh = box
+	mi.material_override = PsxMaterial.make(ProcTextures.mottled(32, Color(0.56, 0.51, 0.43), 0.06, 0.12, 5), Color.WHITE)
+	mi.position = Vector3.UP * LAMP_STONE.y * 0.5
+	stone.add_child(mi)
+	var cs := CollisionShape3D.new()
+	var shape := BoxShape3D.new()
+	shape.size = LAMP_STONE
+	cs.shape = shape
+	cs.position = mi.position
+	stone.add_child(cs)
+	PropRegistry.add_box("lamp_stone", stone.global_transform, AABB(-LAMP_STONE * Vector3(0.5, 0.0, 0.5), LAMP_STONE))
 	_lamp = LampPickup.new()
 	add_child(_lamp)
-	_lamp.global_position = at
+	_lamp.global_position = at + Vector3.UP * LAMP_STONE.y
 	_lamp.rotation.y = atan2(-to.x, -to.z) + deg_to_rad(40.0)
 	if _player.hands():
 		_player.hands().lamp = _lamp
@@ -355,6 +389,8 @@ func _start_stealth() -> void:
 			sn.hearing = w.hearing
 			sn.sight_close = w.sight_close
 			sn.lamp_sight = w.lamp_sight
+			sn.hold_ground = w.hold_ground
+			sn.object_hearing = w.object_hearing
 	_place_first_saint()
 	for e in D.CHECKPOINTS:
 		var area := Area3D.new()
@@ -407,7 +443,19 @@ func _place_first_saint() -> void:
 		_first_saint.setup(cell_point(l.x, l.y), deg_to_rad(90.0), pts, Saint.State.WANDER)
 	else:
 		_first_saint.setup(at, deg_to_rad(fs.yaw), pts, Saint.State.PRAY)
+		_first_saint.strike_target = _victim_head()
 		_first_saint.start_strikes()
+
+
+## Голова жертвы первого святого (тело corpse_beaten в клетке FIRST_SAINT.victim, PROPS): сюда падает камень.
+func _victim_head() -> Vector3:
+	var v: Vector2i = D.FIRST_SAINT.victim
+	for e: Array in D.PROPS:
+		if e[0] == "corpse_beaten" and e[1] == v.x and e[2] == v.y:
+			var at := cell_point(v.x, v.y) + Vector3(e[4] if e.size() > 4 else 0.0, e[6] if e.size() > 6 else 0.0,
+				e[5] if e.size() > 5 else 0.0)
+			return at + Basis(Vector3.UP, deg_to_rad(e[3])) * Corpses.head_point("corpse_beaten") + Vector3.UP * 0.06
+	return cell_point(v.x, v.y) + Vector3.UP * 0.15
 
 
 ## Чекпойнт сохраняется только когда игрок сам управляет героем: пройдён во время катсцены, обморока или «очнулся» —
@@ -511,13 +559,13 @@ func _check_first_saint() -> void:
 
 func _play_first_saint() -> void:
 	var sn := _first_saint
-	var victim := cell_point(D.FIRST_SAINT.victim.x, D.FIRST_SAINT.victim.y)
-	# Куда падает камень (между святым и телом) и где висит свет катсцены (над ними, со стороны героя)
-	var strike := sn.global_position.lerp(victim, 0.45) + Vector3.UP * 0.45
+	var victim := _victim_head()
+	# Куда падает камень (голова лежащего, чуть выше — в кадре рука и камень) и где висит свет катсцены
+	var strike := victim + Vector3.UP * 0.25
 	var to_hero := (_player.global_position - sn.global_position).normalized()
 	await Cutscenes.play_file(FIRST_SAINT_CUTSCENE, {"actors": {"saint": sn},
 		"points": {"stone": func() -> Vector3: return sn.stone_point(),
-			"victim": victim + Vector3.UP * 0.3, "strike": strike,
+			"victim": victim + Vector3.UP * 0.15, "strike": strike,
 			"alley_light": strike + Vector3.UP * 1.5 + to_hero * 0.8},
 		"target": self, "level": self})
 	if sn.state == Saint.State.SCENE:
@@ -548,6 +596,20 @@ func first_saint_freeze() -> void:
 func first_saint_leave() -> void:
 	if _first_saint and _first_saint.state == Saint.State.SCENE:
 		_first_saint.stand_and_leave()
+
+
+## «Q / E — выглянуть» — у первого угла рядом со святым (PEEK_HINT), один раз за игру.
+func _check_peek_hint() -> void:
+	# Не перед самой катсценой первого святого: она бы спрятала строку
+	if GameState.hints_shown.has("peek") or not _first_scene or Engine.get_process_frames() % 10 != 0:
+		return
+	var ph: Dictionary = D.PEEK_HINT
+	if _player.global_position.distance_to(cell_point(ph.cell.x, ph.cell.y)) > ph.radius:
+		return
+	for sn in _saints:
+		if sn.global_position.distance_to(_player.global_position) < ph.saint_within:
+			_hints.request("peek")
+			return
 
 
 ## Для отладки и тестов.
@@ -1038,6 +1100,9 @@ func _build_antonia() -> void:
 	var z_n := WorldCoords.gz(a.y_to)
 	var sy := _ground_y(z_s)
 	var rock_top: float = sy + a.rock
+	_skyline_boxes.append(AABB(Vector3(x0, sy - 2.0, z_n), Vector3(x1 - x0, rock_top + a.low_wall - sy + 2.0, z_s - z_n)))
+	_skyline_boxes.append(AABB(Vector3(x0 + a.inset, rock_top, z_n + a.inset),
+		Vector3(x1 - x0 - a.inset * 2.0, a.building, z_s - z_n - a.inset * 2.0)))
 	# Скала, облицованная гладкими плитами
 	_b.box_between(Vector3(x0, sy - 2.0, z_s), Vector3(x1, rock_top, z_n), _m.slab, 4.0, true,
 		PsxMesh.FACE_BOTTOM | PsxMesh.FACE_TOP | PsxMesh.FACE_EAST | PsxMesh.FACE_NORTH, 2.0)
@@ -1058,6 +1123,7 @@ func _build_antonia() -> void:
 	for i in 4:
 		var c: Vector2 = corners[i]
 		var th: float = rock_top + a.towers[i]
+		_skyline_boxes.append(AABB(Vector3(c.x, rock_top, c.y - ts), Vector3(ts, th - rock_top, ts)))
 		_b.box_between(Vector3(c.x, rock_top - 0.2, c.y - ts), Vector3(c.x + ts, th, c.y), _m.ashlar, 4.0, false,
 			PsxMesh.FACE_BOTTOM | PsxMesh.FACE_TOP, 2.0)
 		_merlons(Vector3(c.x, 0.0, c.y), Vector3(c.x + ts, 0.0, c.y), th)
@@ -1076,6 +1142,7 @@ func _build_antonia() -> void:
 	var pier := 2.5
 	var gw: float = g.span + pier * 2.0
 	var gate := PsxMesh.arch_block(gw, g.height, g.thickness, g.span, g.spring, 4.0, _b.cell)
+	_skyline_boxes.append(AABB(Vector3(WorldCoords.gx(g.x_west), gy, zg - ht), Vector3(x0 - WorldCoords.gx(g.x_west), g.height, ht * 2.0)))
 	_b.mesh_with_trimesh(gate, Transform3D(Basis(), Vector3(gx, gy, zg)), _m.ashlar)
 	_b.box_between(Vector3(WorldCoords.gx(g.x_west), gy, zg + ht), Vector3(gx - gw * 0.5, gy + g.height, zg - ht), _m.ashlar, 4.0, true)
 	_b.box_between(Vector3(gx + gw * 0.5, gy, zg + ht), Vector3(x0, gy + g.height, zg - ht), _m.ashlar, 4.0, true)
@@ -1166,4 +1233,6 @@ func _on_exit_body_entered(body: Node3D) -> void:
 	var end := DemoEnd.new()
 	end.name = "DemoEnd"
 	add_child(end)
-	end.run(self, _player, _gate_point, _gate_point + D.ANTONIA_GATE.sound_offset, _saints)
+	var g: Dictionary = D.ANTONIA_GATE
+	var zg := WorldCoords.gz(g.y)
+	end.run(self, _player, _gate_point, _gate_point + g.sound_offset, _saints, _skyline_boxes)

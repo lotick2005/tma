@@ -84,6 +84,7 @@ func _ready() -> void:
 	_player = get_parent() as Player
 	if _player:
 		_player.footstep.connect(_on_footstep)
+		_player.lean_shift.connect(func() -> void: _on_footstep(Player.MoveMode.CROUCH))
 
 
 func _process(delta: float) -> void:

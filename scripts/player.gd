@@ -24,6 +24,8 @@ const HEAD_LAYER := 5
 signal move_mode_changed(mode: MoveMode)
 ## Нога встала на землю (по ступне анимации, hero_body.gd) — для звука шагов (HeroAudio).
 signal footstep(mode: MoveMode)
+## Выглядывание (Q / E): наклонился или выпрямился — переступил на месте (шум и звук тише шага: HeroHands, HeroAudio).
+signal lean_shift
 
 @export_group("Скорость")
 @export var walk_speed := 2.2
@@ -52,6 +54,14 @@ signal footstep(mode: MoveMode)
 ## Через препятствие не выше этого герой перешагивает сам (пороги, камни, ступени), м.
 @export var step_height := 0.35
 
+@export_group("Выглядывание")
+## Q — влево, E — вправо (держать): камера уходит вбок на lean_offset м с наклоном lean_roll градусов за lean_time с.
+## Сквозь стены не проходит (сфера lean_wall_radius от глаз вбок). На ходу и на бегу не наклоняется.
+@export var lean_offset := 0.35
+@export var lean_roll := 12.0
+@export var lean_time := 0.15
+@export var lean_wall_radius := 0.15
+
 @export_group("Обзор")
 ## Радиан на пиксель экрана.
 @export var mouse_sensitivity := 0.0022
@@ -74,6 +84,9 @@ var _orbit_dist := 2.2
 ## Камера со стороны смотрит на эту точку (в осях героя, от середины тела) — для крупных планов.
 var orbit_focus := Vector3.ZERO
 var _gravity: float = ProjectSettings.get_setting("physics/3d/default_gravity")
+## Наклон: −1 — влево, 1 — вправо (плавный), и куда наклоняется сейчас (по клавишам).
+var lean := 0.0
+var _lean_want := 0.0
 
 @onready var _collision: CollisionShape3D = $CollisionShape3D
 @onready var _head: Node3D = $Head
@@ -173,7 +186,8 @@ func _physics_process(delta: float) -> void:
 	_body.set_motion(Vector3(velocity.x, 0.0, velocity.z) if moving else Vector3.ZERO, _crouched, walk_speed, run_speed)
 
 
-func _process(_delta: float) -> void:
+func _process(delta: float) -> void:
+	_update_lean(delta)
 	if _orbit and _orbit.current:
 		var center := global_position + Vector3.UP * (0.8 if _crouched else 1.1) + global_basis * orbit_focus
 		var dir := Basis.from_euler(Vector3(_orbit_angles.y, _orbit_angles.x, 0.0)) * Vector3.BACK
@@ -211,9 +225,38 @@ func eye_basis() -> Basis:
 	return _head.global_basis
 
 
-## Камеру ставит тело (hero_body.gd): глаза — на кости головы. pos — в осях Player.
+## Камеру ставит тело (hero_body.gd): глаза — на кости головы. pos — в осях Player. Плюс выглядывание (lean):
+## вбок и чуть ниже, но не дальше стены.
 func place_camera(pos: Vector3) -> void:
+	if absf(lean) > 0.001:
+		var side := Vector3(lean * lean_offset, -absf(lean) * 0.04, 0.0)
+		var q := PhysicsShapeQueryParameters3D.new()
+		var sphere := SphereShape3D.new()
+		sphere.radius = lean_wall_radius
+		q.shape = sphere
+		q.transform = Transform3D(Basis(), to_global(pos))
+		q.motion = global_basis * side
+		q.collision_mask = collision_mask
+		q.exclude = [get_rid()]
+		var hit := get_world_3d().direct_space_state.cast_motion(q)
+		var k := 1.0 if hit.is_empty() else hit[0]
+		pos += side * k
 	_head.position = pos
+
+
+## Q / E держат наклон; на ходу, на бегу и когда управление отнято — выпрямляется.
+func _update_lean(delta: float) -> void:
+	var want := 0.0
+	if not locked and move_mode != MoveMode.WALK and move_mode != MoveMode.RUN:
+		want = Input.get_action_strength("lean_right") - Input.get_action_strength("lean_left")
+		if absf(want) < 0.5:
+			want = 0.0
+		want = signf(want)
+	if want != _lean_want:
+		_lean_want = want
+		lean_shift.emit()
+	# Крен камеры от наклона добавляет тело (hero_body.gd, _run_camera) — там ставится весь поворот камеры
+	lean = move_toward(lean, _lean_want, delta / maxf(lean_time, 0.01))
 
 
 # ─── Для катсцен (scripts/cutscene_player.gd) ────────────────────────────────

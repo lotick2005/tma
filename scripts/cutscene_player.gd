@@ -191,7 +191,7 @@ func _process(delta: float) -> void:
 		_apply_lens()
 	if not playing or skipping:
 		return
-	if _ctx.get("skippable", true) and Input.is_action_pressed("interact"):
+	if _ctx.get("skippable", true) and Input.is_action_pressed("skip_cutscene"):
 		_hold += delta
 		_skip_box.visible = true
 		_skip_fill.size.x = 60.0 * clampf(_hold / SKIP_HOLD, 0.0, 1.0)

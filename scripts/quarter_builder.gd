@@ -89,6 +89,11 @@ func cell(c: int, r: int) -> String:
 	return (map[r] as String)[c]
 
 
+## Ряд — переход между террасами (ступени поперёк улицы)?
+func in_terrace(r: int) -> bool:
+	return r >= 0 and r < h and _band[r] == 1
+
+
 ## Мировые координаты центра клетки на уровне её земли.
 func cell_center(c: int, r: int) -> Vector3:
 	return Vector3(x0 + c + 0.5, ground[r], z0 + r + 0.5)

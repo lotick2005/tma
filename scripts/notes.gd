@@ -1,8 +1,10 @@
 class_name Notes
 extends Node3D
 ## Записки в мире (этап 5б, CLAUDE.md §6): свиток, восковая табличка или черепок с надписью — лоуполи, без значков
-## и контура. В свете светильника чуть «бликуют»: пока светильник в руке и записка ближе GLINT_RANGE, у её материала
-## растёт собственная подсветка (с мерцанием огня). Читать — E (HeroHands зовёт readable(), экран — NotesUI).
+## и контура. Слегка видны в темноте (полировка демо 5): тёплый слабый блик (собственная подсветка материала) медленно
+## пульсирует (PULSE_PERIOD), заметен ближе GLOW_FAR, во всю силу — ближе GLOW_NEAR; не ярче огонька светильника.
+## Пока светильник в руке и записка ближе GLINT_RANGE, блик чуть сильнее (с мерцанием огня).
+## Читать — ПКМ (HeroHands зовёт readable(), экран — NotesUI).
 ## Тексты — data/notes/notes.gd, места — NOTES в данных уровня.
 
 const T := preload("res://data/notes/notes.gd")
@@ -13,8 +15,19 @@ const READ_ANGLE := 22.0
 ## Блик в свете светильника: с какого расстояния, м, и сколько максимум (собственная подсветка 0..1).
 const GLINT_RANGE := 3.5
 const GLINT_MAX := 0.22
+## Пульс в темноте: период, с; подсветка в минимуме и максимуме пульса; во всю силу ближе GLOW_NEAR м, дальше
+## гаснет и к GLOW_FAR м пропадает.
+const PULSE_PERIOD := 3.5
+const GLOW_MIN := 0.22
+const GLOW_MAX := 0.55
+const GLOW_NEAR := 4.5
+const GLOW_FAR := 6.0
+## Подсветка умножается на цвет поверхности (тёмный воск таблички светился бы впятеро слабее свитка): яркость блика
+## в пике пульса — GLOW_LUMA независимо от материала (цвет подсветки усиливается по яркости поверхности).
+const GLOW_LUMA := 0.42
+const GLOW_TINT := Color(1.0, 0.78, 0.5)
 
-## [id, Node3D, материал с «бликом»]
+## [id, Node3D, материал с «бликом», усиление цвета подсветки]
 var _items: Array = []
 var _t := 0.0
 
@@ -47,7 +60,19 @@ func spawn(id: String, pos: Vector3, yaw: float, indoor := false) -> void:
 		for mi in node.get_children():
 			(mi as VisualInstance3D).layers = 1 << (LevelBuilder.INTERIOR_LAYER - 1)
 	PropRegistry.add_box("note_" + form, node.global_transform, AABB(Vector3(-0.2, 0.0, -0.12), Vector3(0.4, 0.06, 0.24)))
-	_items.append([id, node, glint])
+	# Яркость поверхности (средняя по текстуре письма) → во сколько раз усилить цвет подсветки
+	var tex := glint.get_shader_parameter("albedo_texture") as Texture2D
+	var luma := 0.5
+	if tex:
+		var img := tex.get_image()
+		var sum := 0.0
+		for y in img.get_height():
+			for x in img.get_width():
+				sum += img.get_pixel(x, y).get_luminance()
+		luma = sum / (img.get_width() * img.get_height())
+	var gain := GLOW_LUMA / maxf(luma * GLOW_MAX, 0.02)
+	glint.set_shader_parameter("self_illum_color", GLOW_TINT * gain)
+	_items.append([id, node, glint, gain])
 
 
 ## Записка, которую можно прочитать: в луче взгляда, ближе READ_DISTANCE, не за стеной.
@@ -88,12 +113,15 @@ func _process(delta: float) -> void:
 	var lamp := GameState.lamp_out
 	# Мерцание огня — общее для всех записок
 	var flicker := 0.8 + 0.2 * sin(_t * 9.3) * sin(_t * 3.7 + 1.0)
-	for it: Array in _items:
+	for i in _items.size():
+		var it: Array = _items[i]
 		var d := cam.global_position.distance_to((it[1] as Node3D).global_position)
-		var k := 0.0
+		# Медленный пульс (у каждой записки своя фаза)
+		var pulse := 0.5 + 0.5 * sin(_t * TAU / PULSE_PERIOD + i * 1.7)
+		var k := lerpf(GLOW_MIN, GLOW_MAX, pulse * pulse) * (1.0 - smoothstep(GLOW_NEAR, GLOW_FAR, d))
 		if lamp and d < GLINT_RANGE:
-			k = GLINT_MAX * (1.0 - d / GLINT_RANGE) * flicker
-		(it[2] as ShaderMaterial).set_shader_parameter("self_illum", k)
+			k += GLINT_MAX * (1.0 - d / GLINT_RANGE) * flicker
+		(it[2] as ShaderMaterial).set_shader_parameter("self_illum", minf(k, 0.75))
 
 
 # ─── Меши ────────────────────────────────────────────────────────────────────
